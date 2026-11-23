@@ -174,7 +174,6 @@
     setTop('Hoy', longDate(td) + (items.length ? ' · ' + pend + ' pendientes' : ''));
     var h = '';
     if (od.length) h += '<div class="sec">Atrasadas</div>' + list(od, true);
-    if (gOn(td).length) h += '<div class="sec">Horario de hoy</div>' + gList(td);
     h += '<div class="sec">Tareas de hoy</div>' + list(items, false, 'No hay tareas para hoy.');
     h += '<div class="sec">Registro de cumplimiento</div>' + weekGrid();
     h += '<div class="note">Toca una casilla para marcar si cumpliste el objetivo del día en ese ámbito. Es independiente de las tareas.</div>' +
@@ -194,7 +193,7 @@
     setTop('Próximos 7 días', 'Desde mañana');
     for (var i = 1; i <= 7; i++) {
       var d = C.addDays(td, i), items = C.tasksOn(D, d);
-      h += '<div class="sec"><span>' + longDate(d) + '</span></div>' + gList(d) + (items.length ? list(items, false) : (gOn(d).length ? '' : '<div class="note" style="margin:0 4px 6px">Sin tareas</div>'));
+      h += '<div class="sec"><span>' + longDate(d) + '</span></div>' + (items.length ? list(items, false) : '<div class="note" style="margin:0 4px 6px">Sin tareas</div>');
     }
     return h;
   }
@@ -225,7 +224,7 @@
     return h + list(items, true, 'No hay tareas pendientes en este ámbito.');
   }
 
-  function hasTasks(d) { return !!G.by[d] || D.tasks.some(function (t) { return !t.deleted && C.occursOn(t, d); }); }
+  function hasTasks(d) { return D.tasks.some(function (t) { return !t.deleted && C.occursOn(t, d); }); }
   function dayCell(d, month) {
     var cls = 'day' + (d === C.today() ? ' today' : '') + (d === ui.calSel ? ' sel' : '') + (hasTasks(d) ? ' has' : '') +
       (month && d.slice(0, 7) !== month ? ' out' : '');
@@ -253,7 +252,7 @@
     var mode = D.meta.calMode === 'dia' ? 'dia' : 'lista';
     h += '<div class="seg"><button class="' + (mode === 'lista' ? 'on' : '') + '" data-a="calmode" data-v="lista">Lista</button>' +
       '<button class="' + (mode === 'dia' ? 'on' : '') + '" data-a="calmode" data-v="dia">Día por horas</button></div>';
-    if (mode === 'lista') return h + '<div class="sec">' + longDate(sel) + '</div>' + gList(sel) + list(C.tasksOn(D, sel), false, gOn(sel).length ? '' : 'Sin tareas este día.');
+    if (mode === 'lista') return h + '<div class="sec">' + longDate(sel) + '</div>' + list(C.tasksOn(D, sel), false, 'Sin tareas este día.');
     return h + timeline(sel);
   }
 
@@ -362,7 +361,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.5</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.6</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
