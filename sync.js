@@ -32,15 +32,18 @@
     var s = { access: j.access_token, refresh: j.refresh_token, exp: Date.now() + (j.expires_in - 60) * 1000, uid: j.user.id, email: j.user.email };
     jset(SK, s); return s;
   }
+  var refreshing = null; // renovación en curso: si varias partes de la app piden sesión a la vez, comparten una sola petición
   function token() {
     var s = jget(SK);
     if (!s) return Promise.reject(new Error('expired'));
     if (Date.now() < s.exp) return Promise.resolve(s);
-    return api('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: s.refresh } }).then(function (r) {
+    if (refreshing) return refreshing;
+    refreshing = api('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: s.refresh } }).then(function (r) {
       if (r.ok && r.json && r.json.access_token) return saveSession(r.json);
       if (r.status >= 400 && r.status < 500) { localStorage.removeItem(SK); throw new Error('expired'); }
       throw new Error('http ' + r.status);
-    });
+    }).then(function (v) { refreshing = null; return v; }, function (e) { refreshing = null; throw e; });
+    return refreshing;
   }
 
   function signIn(email, pass) {
