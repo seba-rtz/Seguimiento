@@ -14,7 +14,8 @@
   var form = null; // estado del formulario abierto
 
   /* ---------- Google Calendar (solo lectura, vía función de Supabase) ---------- */
-  var GK = 'seguimiento.gcal', GCOL = '#6f7c99';
+  var GK = 'seguimiento.gcal', GPAL = ['#6f7c99', '#c46fa8', '#3fa7b5', '#a9805a', '#8c9f4f', '#d0796a'];
+  function gcol(ev) { return GPAL[(ev.cal || 0) % GPAL.length]; }
   var G = { events: [], from: '', to: '', at: 0, loading: false, fail: 0, err: '', by: {} };
   try { var gc = JSON.parse(localStorage.getItem(GK)); if (gc && gc.events) { G.events = gc.events; G.from = gc.from; G.to = gc.to; G.at = gc.at; } } catch (e) {}
   function ldate(dt) { return dt.getFullYear() + '-' + C.pad(dt.getMonth() + 1) + '-' + C.pad(dt.getDate()); }
@@ -42,8 +43,8 @@
   function hm(m) { return C.pad(Math.floor(m / 60)) + ':' + C.pad(m % 60); }
   function gTime(ev, d) { if (ev.allDay) return 'Todo el día'; var m = gMins(ev, d); return hm(m[0]) + '–' + hm(m[1]); }
   function gRow(ev, d) {
-    var m = [gTime(ev, d)]; if (ev.location) m.push(ev.location); m.push('Google Calendar');
-    return '<div class="gev" style="--c:' + GCOL + '"><span class="bar"></span><div class="body"><div class="t">' + esc(ev.title) + '</div><div class="m">' + esc(m.join(' · ')) + '</div></div></div>';
+    var m = [gTime(ev, d)]; if (ev.location) m.push(ev.location); m.push(ev.calName || 'Google Calendar');
+    return '<div class="gev" style="--c:' + gcol(ev) + '"><span class="bar"></span><div class="body"><div class="t">' + esc(ev.title) + '</div><div class="m">' + esc(m.join(' · ')) + '</div></div></div>';
   }
   function gList(d) { return gOn(d).map(function (ev) { return gRow(ev, d); }).join(''); }
   function gSession() { return !!(window.Sync && Sync.info().email); }
@@ -57,7 +58,7 @@
     G.loading = true;
     Sync.calendar(C.parse(from).toISOString(), C.parse(to).toISOString()).then(function (evs) {
       var changed = JSON.stringify(evs) !== JSON.stringify(G.events);
-      G.events = evs; G.from = from; G.to = to; G.at = Date.now(); G.err = ''; G.fail = 0;
+      G.warn = evs.warn || []; G.events = evs; G.from = from; G.to = to; G.at = Date.now(); G.err = ''; G.fail = 0;
       try { localStorage.setItem(GK, JSON.stringify({ events: evs, from: from, to: to, at: G.at })); } catch (e) {}
       indexG(); G.loading = false;
       if ((changed || force) && !drag && $('sheet').classList.contains('hidden')) render();
@@ -279,7 +280,7 @@
     evs.forEach(function (ev) {
       if (ev.g) {
         var gtop = ev.s / 60 * HH, ght = Math.max((ev.e - ev.s) / 60 * HH - 2, 28);
-        h += '<div class="ev gcal" style="--c:' + GCOL + ';--fg:#ffffff;top:' + gtop + 'px;height:' + ght + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
+        h += '<div class="ev gcal" style="--c:' + gcol(ev.g) + ';--fg:' + fgFor(gcol(ev.g)) + ';top:' + gtop + 'px;height:' + ght + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
           ');width:calc((100% - 58px) / ' + ev.n + ' - 3px)"><div class="evb"><div class="evt">' + esc(ev.g.title) + '</div><div class="evm">' + hm(ev.s) + '–' + hm(ev.e) + (ev.g.location ? ' · ' + esc(ev.g.location) : '') + '</div></div></div>';
         return;
       }
@@ -344,7 +345,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.1</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -354,7 +355,7 @@
     var h = '<div class="sec">Cuenta y sincronización</div><div class="card">';
     if (s.email) {
       h += '<div>' + esc(s.email) + '</div><div class="note" style="margin:2px 0 10px">' + esc(s.text) + '</div>' +
-        '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + '</div>' +
+        '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + (G.warn && G.warn.length ? ' Avisos: ' + esc(G.warn.join(' · ')) : '') + '</div>' +
         '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
         '<button class="btn block" data-a="gcalnow">Actualizar Google Calendar</button>' +
         '<button class="btn block" data-a="logout">Cerrar sesión</button>';
