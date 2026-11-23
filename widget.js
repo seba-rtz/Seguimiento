@@ -1,4 +1,4 @@
-// SEGUIMIENTO-WIDGET v4 · Widget grande de Seguimiento para Scriptable (solo lectura)
+// SEGUIMIENTO-WIDGET v5 · Widget grande de Seguimiento para Scriptable (solo lectura)
 const BASE = 'https://seba-rtz.github.io/Seguimiento/';
 const SB = 'https://brclicidivpxqmzfxwsb.supabase.co';
 const KEY = 'sb_publishable_javfWi55UYm9z1f8pEYZMg_KSKgIlsa';
@@ -46,7 +46,10 @@ async function getData(Core) {
     const dr = new Request(SB + '/rest/v1/datos?select=contenido&limit=1');
     dr.headers = { apikey: KEY, Authorization: 'Bearer ' + tj.access_token };
     const rows = await dr.loadJSON();
-    const D = rows && rows[0] && rows[0].contenido ? rows[0].contenido : Core.emptyData();
+    // Si el servidor responde con un error, se usa la copia guardada en vez de sustituirla por datos vacíos.
+    if (dr.response.statusCode !== 200 || !Array.isArray(rows)) throw new Error('datos');
+    if (rows[0] && !Core.validate(rows[0].contenido)) throw new Error('datos');
+    const D = rows[0] ? rows[0].contenido : Core.emptyData();
     fm.writeString(cp('data.json'), JSON.stringify({ D: D, at: Date.now() }));
     return { D: D, stale: false };
   } catch (e) {
