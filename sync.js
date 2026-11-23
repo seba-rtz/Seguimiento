@@ -142,5 +142,14 @@
     });
   }
 
-  root.Sync = { calendar: calendar, init: init, signIn: signIn, signOut: signOut, sync: sync, changed: changed, info: info };
+  function rest(path, o) {
+    return token().then(function (s) { o = o || {}; o.token = s.access; return api(path, o); });
+  }
+  function pushKey() {
+    return fetch(URL + '/functions/v1/avisos', { headers: { apikey: KEY }, cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!j.publica) throw new Error(j.error || 'sin clave'); return j.publica; });
+  }
+
+  root.Sync = { rest: rest, pushKey: pushKey, calendar: calendar, init: init, signIn: signIn, signOut: signOut, sync: sync, changed: changed, info: info };
 })(window);
