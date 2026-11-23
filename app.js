@@ -345,7 +345,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.2</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.3</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -358,6 +358,7 @@
         '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + (G.warn && G.warn.length ? ' Avisos: ' + esc(G.warn.join(' · ')) : '') + '</div>' +
         '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
         '<button class="btn block" data-a="gcalnow">Actualizar Google Calendar</button>' +
+        '<button class="btn block" data-a="gurls">' + (D.meta.gUrls ? 'Cambiar enlaces de los calendarios de Google' : 'Añadir enlaces de los calendarios de Google') + '</button>' +
         '<button class="btn block" data-a="uni">' + (D.meta.uniUrl ? 'Cambiar enlace del horario de la universidad' : 'Añadir horario de la universidad') + '</button>' +
         '<button class="btn block" data-a="logout">Cerrar sesión</button>';
     } else {
@@ -655,6 +656,12 @@
         if (confirm('¿Cerrar sesión? Los datos seguirán guardados en este dispositivo.')) { Sync.signOut(); render(); } break;
       case 'syncnow': Sync.sync(); ensureG(true); break;
       case 'gcalnow': ensureG(true); break;
+      case 'gurls':
+        var gv = prompt('Pega aquí los enlaces secretos iCal de tus calendarios de Google, separados por un espacio (déjalo vacío para quitarlos):', D.meta.gUrls || '');
+        if (gv === null) break;
+        gv = gv.trim().replace(/\s+/g, ' ');
+        if (gv && gv.split(' ').some(function (x) { return !/^https:\/\//i.test(x); })) { alert('Cada enlace debe empezar por https://'); break; }
+        D.meta.gUrls = gv; save(); G.fail = 0; ensureG(true); render(); break;
       case 'uni':
         var uv = prompt('Pega aquí el enlace del horario de la universidad (déjalo vacío para quitarlo):', D.meta.uniUrl || '');
         if (uv === null) break;
