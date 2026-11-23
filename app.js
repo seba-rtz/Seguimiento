@@ -63,7 +63,6 @@
     var m = [gTime(ev, d)]; if (ev.location) m.push(ev.location); m.push(ev.calName || 'Google Calendar');
     return '<div class="gev" style="--c:' + gcol(ev) + '"><span class="bar"></span><div class="body"><div class="t">' + esc(ev.title) + '</div><div class="m">' + esc(m.join(' · ')) + '</div></div></div>';
   }
-  function gList(d) { return gOn(d).map(function (ev) { return gRow(ev, d); }).join(''); }
   function gSession() { return !!(window.Sync && Sync.info().email); }
   function ensureG(force) {
     if (!gSession() || G.loading) return;
@@ -150,13 +149,37 @@
     }).catch(function () {});
     render();
   }
+  // Al cerrar sesión se retiran antes los avisos de este dispositivo (si no, seguirían llegando) y se borran cachés de la cuenta.
+  function logout() {
+    var done = function () {
+      Sync.signOut(); D.meta.avisosOn = false; C.save(localStorage, D);
+      localStorage.removeItem('seguimiento.avisos-plan'); localStorage.removeItem(GK);
+      G.events = []; G.at = 0; indexG(); render();
+    };
+    if (!D.meta.avisosOn) return done();
+    var fin = function () { done(); };
+    Sync.rest('/rest/v1/avisos?enviado=eq.false', { method: 'DELETE', prefer: 'return=minimal' }).then(function () {
+      return pushSupported() ? Promise.race([navigator.serviceWorker.ready, new Promise(function (r) { setTimeout(r, 3000); })]).then(function (reg) { return reg && reg.pushManager.getSubscription(); }) : null;
+    }).then(function (sub) {
+      if (!sub) return;
+      var ep = sub.endpoint; sub.unsubscribe();
+      return Sync.rest('/rest/v1/suscripciones?endpoint=eq.' + encodeURIComponent(ep), { method: 'DELETE', prefer: 'return=minimal' });
+    }).then(fin, fin);
+  }
   function testAviso() {
     Sync.rest('/rest/v1/avisos', { method: 'POST', prefer: 'return=minimal', body: [{ enviar_en: new Date(Date.now() - 1000).toISOString(), titulo: 'Aviso de prueba', cuerpo: 'Si lees esto, los avisos funcionan.' }] })
       .then(function (r) { alert(r.ok ? 'Listo. El aviso de prueba llegará en menos de un minuto.' : 'No se pudo crear el aviso (error ' + r.status + ').'); },
         function () { alert('No se pudo crear el aviso. Revisa la conexión y que has iniciado sesión.'); });
   }
 
-  function save() { C.save(localStorage, D); if (window.Sync) Sync.changed(); }
+  var saveWarned = false;
+  function save() {
+    if (!C.save(localStorage, D) && !saveWarned) {
+      saveWarned = true;
+      alert('No se han podido guardar los cambios en este dispositivo (almacenamiento lleno o bloqueado). Haz una copia de seguridad desde «Más» y libera espacio.');
+    }
+    if (window.Sync) Sync.changed();
+  }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
   function longDate(s) { var d = C.parse(s); return DIAS[C.weekday(d)] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
   function shortDate(s) { var d = C.parse(s); return d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3); }
@@ -183,10 +206,10 @@
     if (!inbox) meta.push(sc.name);
     if (t.rec) meta.push('↻ ' + recLabel(t.rec));
     var mark = st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '';
-    return '<div class="task ' + (st || '') + '" style="--c:' + sc.color + '" data-group="' + (d || '') + '">' +
+    return '<div class="task ' + esc(st || '') + '" style="--c:' + sc.color + '" data-group="' + esc(d || '') + '">' +
       '<span class="bar"></span><span class="dots">' + dots + '</span>' +
-      '<button class="chk" data-a="toggle" data-id="' + t.id + '" data-date="' + (d || '') + '" aria-label="Completar">' + mark + '</button>' +
-      '<div class="body" data-a="edit" data-id="' + t.id + '" data-date="' + (d || '') + '"><div class="t">' + esc(t.title) + '</div>' +
+      '<button class="chk" data-a="toggle" data-id="' + esc(t.id) + '" data-date="' + esc(d || '') + '" aria-label="Completar">' + mark + '</button>' +
+      '<div class="body" data-a="edit" data-id="' + esc(t.id) + '" data-date="' + esc(d || '') + '"><div class="t">' + esc(t.title) + '</div>' +
       (meta.length ? '<div class="m">' + esc(meta.join(' · ')) + '</div>' : '') + '</div>' + (inbox ? '<span class="tag">' + esc(sc.name) + '</span>' : '') + '</div>';
   }
   function list(items, showDate, empty) {
@@ -395,10 +418,10 @@
       }
       var t = ev.x.t, sc = C.scopeById(t.scope), st = C.getState(t, sel);
       var top = ev.s / 60 * HH, ht = Math.max((ev.e - ev.s) / 60 * HH - 2, 28);
-      h += '<div class="ev ' + (st || '') + '" style="--c:' + sc.color + ';--fg:' + fgFor(sc.color) + ';top:' + top + 'px;height:' + ht + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
-        ');width:calc((100% - 58px) / ' + ev.n + ' - 3px)"><button class="evchk" data-a="toggle" data-id="' + t.id + '" data-date="' + sel + '" aria-label="Completar">' +
-        (st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '') + '</button><div class="evb" data-a="edit" data-id="' + t.id + '" data-date="' + sel + '"><div class="evt">' + esc(t.title) +
-        '</div><div class="evm">' + t.time + (t.end ? '–' + t.end : '') + '</div></div></div>';
+      h += '<div class="ev ' + esc(st || '') + '" style="--c:' + sc.color + ';--fg:' + fgFor(sc.color) + ';top:' + top + 'px;height:' + ht + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
+        ');width:calc((100% - 58px) / ' + ev.n + ' - 3px)"><button class="evchk" data-a="toggle" data-id="' + esc(t.id) + '" data-date="' + sel + '" aria-label="Completar">' +
+        (st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '') + '</button><div class="evb" data-a="edit" data-id="' + esc(t.id) + '" data-date="' + sel + '"><div class="evt">' + esc(t.title) +
+        '</div><div class="evm">' + esc(t.time + (t.end ? '–' + t.end : '')) + '</div></div></div>';
     });
     if (sel === C.today()) {
       var now = new Date(), nm = now.getHours() * 60 + now.getMinutes();
@@ -421,8 +444,8 @@
       h += '<div class="sec">' + s.name + '</div>';
       arr.forEach(function (g) {
         var st = C.GOAL_STATES.filter(function (x) { return x.id === g.status; })[0] || C.GOAL_STATES[0];
-        h += '<div class="goal ' + g.status + '" style="--c:' + s.color + '"><span class="bar"></span><div class="t" data-a="goaledit" data-id="' + g.id + '">' +
-          esc(g.title) + '</div><button class="pill ' + g.status + '" data-a="goalcycle" data-id="' + g.id + '">' + st.name + '</button></div>';
+        h += '<div class="goal ' + esc(g.status) + '" style="--c:' + s.color + '"><span class="bar"></span><div class="t" data-a="goaledit" data-id="' + esc(g.id) + '">' +
+          esc(g.title) + '</div><button class="pill ' + esc(g.status) + '" data-a="goalcycle" data-id="' + esc(g.id) + '">' + st.name + '</button></div>';
       });
     });
     return h;
@@ -436,8 +459,8 @@
     items.forEach(function (t) {
       var sc = C.scopeById(t.scope);
       h += '<div class="card" style="border-left:5px solid ' + sc.color + '"><div>' + esc(t.title) + '</div><div class="note" style="margin:2px 0 10px">' +
-        sc.name + (t.date ? ' · ' + shortDate(t.date) : '') + '</div><div class="row"><button class="btn" data-a="restore" data-id="' + t.id +
-        '">Recuperar</button><button class="btn danger" data-a="purge" data-id="' + t.id + '">Borrar para siempre</button></div></div>';
+        sc.name + (t.date ? ' · ' + shortDate(t.date) : '') + '</div><div class="row"><button class="btn" data-a="restore" data-id="' + esc(t.id) +
+        '">Recuperar</button><button class="btn danger" data-a="purge" data-id="' + esc(t.id) + '">Borrar para siempre</button></div></div>';
     });
     return h + '<button class="btn danger block" data-a="emptytrash">Vaciar papelera</button>';
   }
@@ -454,7 +477,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 8.2</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 11</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -647,6 +670,8 @@
         var d = JSON.parse(r.result);
         if (!C.validate(d)) throw new Error('formato');
         if (!confirm('Esto reemplazará todos los datos actuales (' + D.tasks.length + ' tareas) por los de la copia (' + d.tasks.length + ' tareas). ¿Continuar?')) return;
+        // Antes de sustituir, se guarda una copia de lo actual por si fue un error.
+        if (D.tasks.length || D.goals.length || Object.keys(D.log).length) { try { localStorage.setItem('seguimiento.copia-antes-de-importar', JSON.stringify(D)); } catch (e) {} }
         d.meta = d.meta || {}; D = d; save(); render();
         alert('Copia importada.');
       } catch (e) { alert('Ese archivo no parece una copia válida de esta app.'); }
@@ -767,7 +792,7 @@
         Sync.signIn(em, pw).then(function () { closeSheet(); render(); }, function (err) { $('l-msg').textContent = err.message; });
         break;
       case 'logout':
-        if (confirm('¿Cerrar sesión? Los datos seguirán guardados en este dispositivo.')) { Sync.signOut(); render(); } break;
+        if (confirm('¿Cerrar sesión? Los datos seguirán guardados en este dispositivo.')) { logout(); } break;
       case 'syncnow': Sync.sync(); ensureG(true); break;
       case 'gcalnow': ensureG(true); break;
       case 'avisoson': enableAvisos(); break;
