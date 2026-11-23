@@ -1,4 +1,4 @@
-// SEGUIMIENTO-WIDGET v1 · Widget grande de Seguimiento para Scriptable (solo lectura)
+// SEGUIMIENTO-WIDGET v2 · Widget grande de Seguimiento para Scriptable (solo lectura)
 const BASE = 'https://seba-rtz.github.io/Seguimiento/';
 const SB = 'https://brclicidivpxqmzfxwsb.supabase.co';
 const KEY = 'sb_publishable_javfWi55UYm9z1f8pEYZMg_KSKgIlsa';
@@ -62,8 +62,8 @@ async function main() {
   const coreSrc = await textCached('core.js', BASE + 'core.js?t=' + Date.now());
   const w = new ListWidget();
   w.backgroundColor = new Color('#121214');
-  w.url = BASE;
-  w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
+  w.url = 'shortcuts://run-shortcut?name=Abrir%20Seguimiento'; // el atajo abre la app web instalada (webapp://)
+  w.refreshAfterDate = new Date(Date.now() + 5 * 60 * 1000);
   const GREY = new Color('#9a9aa0'), ORANGE = new Color('#ff9f43'), TXT = new Color('#f2f2f2'), OFF = new Color('#2a2a2e');
   const txt = function (parent, s, size, color, bold) {
     const t = parent.addText(String(s));
