@@ -128,11 +128,11 @@
     sync();
   }
 
-  function calendar(from, to) {
+  function calendar(from, to, uni) {
     return token().then(function (s) {
       return fetch(URL + '/functions/v1/calendario', { method: 'POST', cache: 'no-store',
         headers: { apikey: KEY, Authorization: 'Bearer ' + s.access, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: from, to: to }) });
+        body: JSON.stringify({ from: from, to: to, uni: uni || '' }) });
     }).then(function (r) {
       return r.text().then(function (t) {
         var j = null; try { j = JSON.parse(t); } catch (e) {}
