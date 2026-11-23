@@ -40,7 +40,7 @@
     meta.push(sc.name);
     if (t.rec) meta.push('↻ ' + recLabel(t.rec));
     var mark = st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '';
-    return '<div class="task ' + (st || '') + '" style="--c:' + sc.color + '" data-group="' + (d || '') + '|' + (t.priority || 0) + '|' + t.scope + '">' +
+    return '<div class="task ' + (st || '') + '" style="--c:' + sc.color + '" data-group="' + (d || '') + '">' +
       '<span class="bar"></span><span class="dots">' + dots + '</span>' +
       '<button class="chk" data-a="toggle" data-id="' + t.id + '" data-date="' + (d || '') + '" aria-label="Completar">' + mark + '</button>' +
       '<div class="body" data-a="edit" data-id="' + t.id + '" data-date="' + (d || '') + '"><div class="t">' + esc(t.title) +
@@ -104,7 +104,7 @@
     h += '<div class="sec">Tareas de hoy</div>' + list(items, false, 'No hay tareas para hoy.');
     h += '<div class="sec">Registro de cumplimiento</div>' + weekGrid();
     h += '<div class="note">Toca una casilla para marcar si cumpliste el objetivo del día en ese ámbito. Es independiente de las tareas.</div>' +
-      '<div class="note">Mantén pulsada una tarea y arrástrala para ordenarla dentro de su grupo (misma fecha, prioridad y ámbito).</div>';
+      '<div class="note">Mantén pulsada una tarea y arrástrala para ordenarla dentro de su día. Lo que muevas manda; lo que no muevas se ordena solo (prioridad y ámbito).</div>';
     return h;
   }
 
@@ -226,7 +226,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos viven solo en este iPhone. Haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 3</div>';
   }
 
   var VIEWS = { hoy: viewHoy, buzon: viewBuzon, proximos: viewProximos, todo: viewTodo, ambito: viewAmbito,
@@ -283,8 +283,8 @@
       '<div class="lbl">Fecha</div><div class="row"><input type="date" id="f-date" value="' + (date || '') + '">' +
       '<button class="btn" data-a="fdate" data-v="today">Hoy</button><button class="btn" data-a="fdate" data-v="tomorrow">Mañana</button>' +
       '<button class="btn" data-a="fdate" data-v="none">Sin fecha</button></div>' +
-      '<div class="lbl">Hora (opcional)</div><div class="row"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio</div><input type="time" id="f-time" value="' + (t && t.time ? t.time : '') +
-      '"></div><div style="flex:1"><div class="note" style="margin:0 0 4px">Fin</div><input type="time" id="f-end" value="' + (t && t.end ? t.end : '') +
+      '<div class="lbl">Hora (opcional)</div><div class="row"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio (opcional)</div><input type="time" id="f-time" value="' + (t && t.time ? t.time : '') +
+      '"></div><div style="flex:1"><div class="note" style="margin:0 0 4px">Fin (opcional)</div><input type="time" id="f-end" value="' + (t && t.end ? t.end : '') +
       '"></div><button class="btn" data-a="ftimeclear" style="align-self:flex-end">Quitar</button></div>' +
       '<div class="lbl">Repetir</div><select id="f-rec">' +
       [['', 'No se repite'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes'], ['yearly', 'Cada año'], ['every', 'Cada X días, semanas o meses']]
@@ -431,9 +431,7 @@
   function endDrag() {
     var rows = [].filter.call(drag.box.querySelectorAll('.task'), function (r) { return r.dataset.group === drag.group; });
     var tasks = rows.map(function (r) { return findTask(r.querySelector('[data-id]').dataset.id); });
-    var vals = tasks.map(C.orderOf).sort(function (a, b) { return a - b; });
-    for (var i = 1; i < vals.length; i++) if (vals[i] <= vals[i - 1]) vals[i] = vals[i - 1] + 1;
-    tasks.forEach(function (t, k) { t.order = vals[k]; });
+    tasks.forEach(function (t, k) { t.order = k + 1; }); // la lista queda fijada como se ve
     drag.row.classList.remove('drag'); document.body.classList.remove('dragging');
     drag = null; noClickUntil = Date.now() + 400;
     save(); render();
@@ -453,7 +451,7 @@
   document.addEventListener('mouseup', pressEnd);
 
   document.addEventListener('click', function (e) {
-    if (Date.now() < noClickUntil) return;
+    if (Date.now() < noClickUntil && e.target.closest('.task')) return;
     var el = e.target.closest('[data-a]');
     if (!el) return;
     var a = el.dataset.a, id = el.dataset.id, d = el.dataset.date, v = el.dataset.v, t;

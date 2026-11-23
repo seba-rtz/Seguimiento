@@ -1,6 +1,6 @@
 /* Service worker: la app funciona sin conexión. Con conexión, usa siempre la versión más nueva. */
-var V = 'seguimiento-v1';
-var FILES = ['./', 'index.html', 'styles.css', 'core.js', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+var V = 'seguimiento-v3';
+var FILES = ['./', 'index.html', 'styles.css?v=3', 'core.js?v=3', 'app.js?v=3', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(V).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
@@ -12,7 +12,7 @@ self.addEventListener('activate', function (e) {
 });
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
-  e.respondWith(fetch(e.request).then(function (r) {
+  e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(function (r) {
     var copy = r.clone();
     caches.open(V).then(function (c) { c.put(e.request, copy); });
     return r;

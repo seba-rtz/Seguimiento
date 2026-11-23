@@ -91,15 +91,19 @@
     return null;
   }
 
-  // Orden: (la fecha la fija cada vista) -> prioridad -> ámbito -> orden manual.
+  // Orden: (la fecha la fija cada vista) -> orden arrastrado -> prioridad -> ámbito -> creación.
   function scopeIndex(id) { for (var i = 0; i < SCOPES.length; i++) if (SCOPES[i].id === id) return i; return 99; }
   function orderOf(t) { return t.order != null ? t.order : (t.created || 0); }
   function cmp(a, b) {
+    // 1.º el orden que el usuario ha arrastrado; 2.º el orden por defecto.
+    var ma = a.t.order != null, mb = b.t.order != null;
+    if (ma && mb && a.t.order !== b.t.order) return a.t.order - b.t.order;
+    if (ma !== mb) return ma ? -1 : 1;
     var pa = a.t.priority || 0, pb = b.t.priority || 0;
     if (pa !== pb) return pb - pa;
     var sa = scopeIndex(a.t.scope), sb = scopeIndex(b.t.scope);
     if (sa !== sb) return sa - sb;
-    var oa = orderOf(a.t), ob = orderOf(b.t);
+    var oa = a.t.created || 0, ob = b.t.created || 0;
     if (oa !== ob) return oa - ob;
     return a.t.title.localeCompare(b.t.title, 'es');
   }
