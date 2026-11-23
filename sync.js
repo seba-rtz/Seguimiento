@@ -128,5 +128,19 @@
     sync();
   }
 
-  root.Sync = { init: init, signIn: signIn, signOut: signOut, sync: sync, changed: changed, info: info };
+  function calendar(from, to) {
+    return token().then(function (s) {
+      return fetch(URL + '/functions/v1/calendario', { method: 'POST', cache: 'no-store',
+        headers: { apikey: KEY, Authorization: 'Bearer ' + s.access, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: from, to: to }) });
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var j = null; try { j = JSON.parse(t); } catch (e) {}
+        if (!r.ok) throw new Error(j && j.error ? (/ICAL_URL/.test(j.error) ? 'falta guardar la dirección secreta en Supabase.' : j.error) : 'error ' + r.status);
+        return j.events || [];
+      });
+    });
+  }
+
+  root.Sync = { calendar: calendar, init: init, signIn: signIn, signOut: signOut, sync: sync, changed: changed, info: info };
 })(window);
