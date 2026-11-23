@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121214">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Seguimiento">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+<title>Seguimiento</title>
+</head>
+<body>
+<header id="top">
+  <div>
+    <h1 id="title">Hoy</h1>
+    <div id="subtitle"></div>
+  </div>
+</header>
+<main id="main"></main>
+<button id="fab" data-a="fab" aria-label="Añadir">+</button>
+<nav id="nav">
+  <button data-a="nav" data-view="hoy"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg><span>Hoy</span></button>
+  <button data-a="nav" data-view="buzon"><svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5"/></svg><span>Buzón</span></button>
+  <button data-a="nav" data-view="calendario"><svg viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v5M16 3v5"/></svg><span>Calendario</span></button>
+  <button data-a="nav" data-view="objetivos"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span>Objetivos</span></button>
+  <button data-a="nav" data-view="mas"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg><span>Más</span></button>
+</nav>
+<div id="sheet" class="hidden"></div>
+<input type="file" id="importFile" accept=".json,application/json" hidden>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
