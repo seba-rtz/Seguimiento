@@ -15,7 +15,7 @@
 
   /* ---------- Google Calendar (solo lectura, vía función de Supabase) ---------- */
   var GK = 'seguimiento.gcal', GPAL = ['#6f7c99', '#c46fa8', '#3fa7b5', '#a9805a', '#8c9f4f', '#d0796a'];
-  var GDEF = [['trabajo', '#ff7b7b'], ['formaci', '#7aaed6'], ['obligaci', '#c5c230'], ['salud', '#8cc646'], ['descanso', '#b794f6'], ['universidad', '#4f9dff'], ['horario', '#4f9dff']];
+  var GDEF = [['trabajo', '#ff7b7b'], ['formaci', '#7aaed6'], ['obligaci', '#dcd75a'], ['salud', '#a2d964'], ['descanso', '#c9b0f9'], ['universidad', '#4f9dff'], ['horario', '#4f9dff']];
   function gDef(name) { var n = String(name || '').toLowerCase(); for (var i = 0; i < GDEF.length; i++) if (n.indexOf(GDEF[i][0]) >= 0) return GDEF[i][1]; return ''; }
   function gBase(ev) { var c = D.meta.gColors && D.meta.gColors[ev.calName]; return c || gDef(ev.calName) || GPAL[(ev.cal || 0) % GPAL.length]; }
   function gMute(h) { // apaga el color: lo mezcla con un tono sepia
@@ -296,7 +296,7 @@
     evs.forEach(function (ev) {
       if (ev.g) {
         var gtop = ev.s / 60 * HH, ght = Math.max((ev.e - ev.s) / 60 * HH - 2, 28);
-        h += '<div class="ev gcal" style="--c:' + gcol(ev.g) + ';--fg:' + fgFor(gcol(ev.g)) + ';top:' + gtop + 'px;height:' + ght + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
+        h += '<div class="ev gcal" style="--c:' + gcol(ev.g) + ';--fg:#ffffff;text-shadow:0 1px 2px rgba(0,0,0,.55);top:' + gtop + 'px;height:' + ght + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
           ');width:calc((100% - 58px) / ' + ev.n + ' - 3px)"><div class="evb"><div class="evt">' + esc(ev.g.title) + '</div><div class="evm">' + hm(ev.s) + '–' + hm(ev.e) + (ev.g.location ? ' · ' + esc(ev.g.location) : '') + '</div></div></div>';
         return;
       }
@@ -361,7 +361,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.6</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.7</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
