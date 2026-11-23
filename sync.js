@@ -137,7 +137,7 @@
       return r.text().then(function (t) {
         var j = null; try { j = JSON.parse(t); } catch (e) {}
         if (!r.ok) throw new Error(j && j.error ? (/ICAL_URL/.test(j.error) ? 'falta guardar la dirección secreta en Supabase.' : j.error) : 'error ' + r.status);
-        return j.events || [];
+        var ev = j.events || []; ev.warn = j.errores || []; return ev;
       });
     });
   }
