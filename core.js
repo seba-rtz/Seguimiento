@@ -85,7 +85,15 @@
     if (!t.date) return null;
     if (!t.rec) return t.date >= from ? t.date : null;
     var d = from < t.date ? t.date : from;
-    for (var i = 0; i < (limit || 400); i++, d = addDays(d, 1)) {
+    // Las repeticiones «cada X meses/semanas» pueden estar a más de 400 días: se busca hasta el intervalo completo (máx. 10 años).
+    if (!limit) {
+      limit = 400;
+      if (t.rec.type === 'every') {
+        var n = Math.max(1, +t.rec.n || 1);
+        limit = Math.min(3700, Math.max(400, (t.rec.unit === 'm' ? n * 31 : t.rec.unit === 'w' ? n * 7 : n) + 31));
+      }
+    }
+    for (var i = 0; i < limit; i++, d = addDays(d, 1)) {
       if (occursOn(t, d) && !getState(t, d)) return d;
     }
     return null;
@@ -122,17 +130,23 @@
   function validate(d) {
     return d && typeof d === 'object' && Array.isArray(d.tasks) && Array.isArray(d.goals) && d.log && typeof d.log === 'object';
   }
+  // Si lo guardado está dañado, se conserva aparte antes de empezar de cero (para no perderlo al guardar encima).
+  function rescue(storage, raw) { try { if (raw) storage.setItem(KEY + '.corrupta', raw); } catch (e) { /* sin espacio: no se puede hacer más */ } }
   function load(storage) {
+    var raw = null;
     try {
-      var raw = storage.getItem(KEY);
+      raw = storage.getItem(KEY);
       if (!raw) return emptyData();
       var d = JSON.parse(raw);
-      if (!validate(d)) return emptyData();
+      if (!validate(d)) { rescue(storage, raw); return emptyData(); }
       d.meta = d.meta || {};
       return d;
-    } catch (e) { return emptyData(); }
+    } catch (e) { rescue(storage, raw); return emptyData(); }
   }
-  function save(storage, data) { storage.setItem(KEY, JSON.stringify(data)); }
+  // Devuelve false si no se pudo guardar (por ejemplo, almacenamiento lleno), en vez de fallar en silencio.
+  function save(storage, data) {
+    try { storage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; }
+  }
 
   function weekTotals(data, monday) {
     var res = {};
