@@ -347,7 +347,19 @@
     evs.sort(function (a, b) { return a.s - b.s || a.e - b.e; });
     // reparto en columnas para tareas que se solapan
     var cluster = [], colEnds = [], clEnd = 0;
-    function flush() { cluster.forEach(function (ev) { ev.n = colEnds.length; }); cluster = []; colEnds = []; }
+    function flush() {
+      // orden fijo de columnas: tareas a la izquierda, luego calendarios de Google por orden y la universidad siempre a la derecha
+      var nc = colEnds.length, cr = [];
+      for (var q = 0; q < nc; q++) cr.push({ c: q, r: 99999 });
+      cluster.forEach(function (ev) {
+        var r = ev.g ? (ev.g.calName === 'Universidad' ? 1000 : ev.g.cal) : -1;
+        if (r < cr[ev.c].r) cr[ev.c].r = r;
+      });
+      var map = {};
+      cr.slice().sort(function (p, o) { return p.r - o.r || p.c - o.c; }).forEach(function (o, i) { map[o.c] = i; });
+      cluster.forEach(function (ev) { ev.c = map[ev.c]; ev.n = nc; });
+      cluster = []; colEnds = [];
+    }
     evs.forEach(function (ev) {
       if (cluster.length && ev.s >= clEnd) flush();
       var c = 0; while (c < colEnds.length && colEnds[c] > ev.s) c++;
@@ -431,7 +443,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 8</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 8.1</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
