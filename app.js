@@ -176,8 +176,59 @@
         '<div class="calgrid">' + dh + cs + '</div>';
     }
     setTop('Calendario', longDate(sel));
-    h += '<div class="sec">' + longDate(sel) + '</div>' + list(C.tasksOn(D, sel), false, 'Sin tareas este día.');
-    return h;
+    var mode = D.meta.calMode === 'dia' ? 'dia' : 'lista';
+    h += '<div class="seg"><button class="' + (mode === 'lista' ? 'on' : '') + '" data-a="calmode" data-v="lista">Lista</button>' +
+      '<button class="' + (mode === 'dia' ? 'on' : '') + '" data-a="calmode" data-v="dia">Día por horas</button></div>';
+    if (mode === 'lista') return h + '<div class="sec">' + longDate(sel) + '</div>' + list(C.tasksOn(D, sel), false, 'Sin tareas este día.');
+    return h + timeline(sel);
+  }
+
+  /* Vista de día por horas */
+  var HH = 56; // altura de una hora en píxeles
+  function fgFor(hex) { // texto oscuro sobre colores claros (amarillo, verde), blanco sobre el resto
+    var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#111114' : '#ffffff';
+  }
+  function mins(s) { var p = s.split(':'); return +p[0] * 60 + +p[1]; }
+  function timeline(sel) {
+    var items = C.tasksOn(D, sel);
+    var untimed = items.filter(function (x) { return !x.t.time; });
+    var evs = items.filter(function (x) { return x.t.time; }).map(function (x) {
+      var s = mins(x.t.time), e = x.t.end ? mins(x.t.end) : s + 60;
+      if (e <= s) e = s + 30;
+      return { x: x, s: s, e: Math.min(e, 1440) };
+    }).sort(function (a, b) { return a.s - b.s || a.e - b.e; });
+    // reparto en columnas para tareas que se solapan
+    var cluster = [], colEnds = [], clEnd = 0;
+    function flush() { cluster.forEach(function (ev) { ev.n = colEnds.length; }); cluster = []; colEnds = []; }
+    evs.forEach(function (ev) {
+      if (cluster.length && ev.s >= clEnd) flush();
+      var c = 0; while (c < colEnds.length && colEnds[c] > ev.s) c++;
+      colEnds[c] = ev.e; ev.c = c;
+      clEnd = cluster.length ? Math.max(clEnd, ev.e) : ev.e;
+      cluster.push(ev);
+    });
+    flush();
+    var h = '';
+    if (untimed.length) h += '<div class="sec">Sin hora</div>' + list(untimed, false);
+    h += '<div class="sec">' + longDate(sel) + '</div><div class="tl" id="tl" style="height:' + (24 * HH) + 'px">';
+    for (var i = 0; i < 24; i++) {
+      h += '<div class="hl" style="top:' + (i * HH) + 'px;height:' + HH + 'px" data-a="slot" data-h="' + i + '"><span>' + C.pad(i) + ':00</span></div>';
+    }
+    evs.forEach(function (ev) {
+      var t = ev.x.t, sc = C.scopeById(t.scope), st = C.getState(t, sel);
+      var top = ev.s / 60 * HH, ht = Math.max((ev.e - ev.s) / 60 * HH - 2, 28);
+      h += '<div class="ev ' + (st || '') + '" style="--c:' + sc.color + ';--fg:' + fgFor(sc.color) + ';top:' + top + 'px;height:' + ht + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
+        ');width:calc((100% - 58px) / ' + ev.n + ' - 3px)"><button class="evchk" data-a="toggle" data-id="' + t.id + '" data-date="' + sel + '" aria-label="Completar">' +
+        (st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '') + '</button><div class="evb" data-a="edit" data-id="' + t.id + '" data-date="' + sel + '"><div class="evt">' + esc(t.title) +
+        '</div><div class="evm">' + t.time + (t.end ? '–' + t.end : '') + '</div></div></div>';
+    });
+    if (sel === C.today()) {
+      var now = new Date(), nm = now.getHours() * 60 + now.getMinutes();
+      h += '<div class="now" style="top:' + (nm / 60 * HH) + 'px"></div>';
+    }
+    ui.tlFocus = evs.length ? evs[0].s : (sel === C.today() ? new Date().getHours() * 60 : 7 * 60);
+    return h + '</div>';
   }
 
   function qName(q) { return q.slice(6) + 'º trimestre ' + q.slice(0, 4); }
@@ -226,7 +277,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos viven solo en este iPhone. Haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 3</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 5</div>';
   }
 
   var VIEWS = { hoy: viewHoy, buzon: viewBuzon, proximos: viewProximos, todo: viewTodo, ambito: viewAmbito,
@@ -239,8 +290,10 @@
     var on = NAVMAP[ui.view] || ui.view;
     [].forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.view === on); });
     $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera');
+    var tl = $('tl');
+    if (tl && ui.tlScroll) { ui.tlScroll = false; window.scrollTo(0, Math.max(0, tl.getBoundingClientRect().top + window.scrollY + ui.tlFocus / 60 * HH - 430)); }
   }
-  function go(v) { ui.view = v; render(); window.scrollTo(0, 0); }
+  function go(v) { ui.view = v; ui.tlScroll = true; render(); window.scrollTo(0, 0); }
 
   /* ---------- Hoja inferior ---------- */
   function openSheet(html) {
@@ -262,7 +315,7 @@
     return null;
   }
 
-  function openTask(id, ctxDate) {
+  function openTask(id, ctxDate, preset) {
     var t = id ? findTask(id) : null;
     form = {
       id: id, ctx: ctxDate || (t && t.date) || null,
@@ -283,7 +336,7 @@
       '<div class="lbl">Fecha</div><div class="row"><input type="date" id="f-date" value="' + (date || '') + '">' +
       '<button class="btn" data-a="fdate" data-v="today">Hoy</button><button class="btn" data-a="fdate" data-v="tomorrow">Mañana</button>' +
       '<button class="btn" data-a="fdate" data-v="none">Sin fecha</button></div>' +
-      '<div class="lbl">Hora (opcional)</div><div class="row"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio (opcional)</div><input type="time" id="f-time" value="' + (t && t.time ? t.time : '') +
+      '<div class="lbl">Hora (opcional)</div><div class="row"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio (opcional)</div><input type="time" id="f-time" value="' + (t && t.time ? t.time : (preset && preset.time) || '') +
       '"></div><div style="flex:1"><div class="note" style="margin:0 0 4px">Fin (opcional)</div><input type="time" id="f-end" value="' + (t && t.end ? t.end : '') +
       '"></div><button class="btn" data-a="ftimeclear" style="align-self:flex-end">Quitar</button></div>' +
       '<div class="lbl">Repetir</div><select id="f-rec">' +
@@ -468,9 +521,11 @@
         if (D.log[d][el.dataset.scope]) delete D.log[d][el.dataset.scope]; else D.log[d][el.dataset.scope] = true;
         if (!Object.keys(D.log[d]).length) delete D.log[d];
         save(); render(); break;
+      case 'calmode': D.meta.calMode = v; ui.tlScroll = true; save(); render(); break;
+      case 'slot': openTask(null, null, { time: C.pad(+el.dataset.h) + ':00' }); break;
       case 'caltoggle': ui.calOpen = !ui.calOpen; ui.calMonth = ui.calSel.slice(0, 7); render(); break;
       case 'calsel':
-        ui.calSel = d; ui.calMonth = d.slice(0, 7); render(); break;
+        ui.calSel = d; ui.calMonth = d.slice(0, 7); ui.tlScroll = true; render(); break;
       case 'calmove':
         var n = +el.dataset.n;
         if (ui.calOpen) {
@@ -479,7 +534,7 @@
           var day = Math.min(C.parse(ui.calSel).getDate(), C.dim(m.getFullYear(), m.getMonth() + 1));
           ui.calSel = ui.calMonth + '-' + C.pad(day);
         } else { ui.calSel = C.addDays(ui.calSel, 7 * n); ui.calMonth = ui.calSel.slice(0, 7); }
-        render(); break;
+        ui.tlScroll = true; render(); break;
       case 'qmove': ui.quarter = C.shiftQuarter(ui.quarter, +el.dataset.n); render(); break;
       case 'goalcycle':
         var g = D.goals.filter(function (x) { return x.id === id; })[0];
