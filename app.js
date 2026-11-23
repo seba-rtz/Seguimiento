@@ -13,7 +13,7 @@
   };
   var form = null; // estado del formulario abierto
 
-  function save() { C.save(localStorage, D); }
+  function save() { C.save(localStorage, D); if (window.Sync) Sync.changed(); }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
   function longDate(s) { var d = C.parse(s); return DIAS[C.weekday(d)] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
   function shortDate(s) { var d = C.parse(s); return d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3); }
@@ -273,11 +273,34 @@
       '<button data-a="nav" data-view="todo">Todo</button>' +
       '<button data-a="nav" data-view="ambito">Por ámbito</button>' +
       '<button data-a="nav" data-view="papelera">Papelera</button></div>' +
-      '<div class="sec">Copia de seguridad</div><div class="card">' +
-      '<div class="note" style="margin:0 0 10px">Tus datos viven solo en este iPhone. Haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
+      accountCard() + '<div class="sec">Copia de seguridad</div><div class="card">' +
+      '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 5</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 6</div>';
+  }
+
+  /* ---------- Cuenta y sincronización ---------- */
+  function accountCard() {
+    if (!window.Sync) return '';
+    var s = Sync.info();
+    var h = '<div class="sec">Cuenta y sincronización</div><div class="card">';
+    if (s.email) {
+      h += '<div>' + esc(s.email) + '</div><div class="note" style="margin:2px 0 10px">' + esc(s.text) + '</div>' +
+        '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
+        '<button class="btn block" data-a="logout">Cerrar sesión</button>';
+    } else {
+      h += '<div class="note" style="margin:0 0 10px">Inicia sesión para que tus datos se guarden en la nube y sean los mismos en el móvil y en el ordenador.</div>' +
+        '<button class="btn block primary" data-a="login">Iniciar sesión</button>';
+    }
+    return h + '</div>';
+  }
+  function openLogin() {
+    openSheet('<h2>Iniciar sesión</h2>' +
+      '<input id="l-mail" type="email" placeholder="Correo" autocomplete="username" autocapitalize="none" autocorrect="off">' +
+      '<input id="l-pass" type="password" placeholder="Contraseña" autocomplete="current-password" style="margin-top:10px">' +
+      '<div class="note" id="l-msg"></div>' +
+      '<div class="actions"><button class="btn primary" data-a="dologin">Entrar</button><button class="btn" data-a="close">Cancelar</button></div>');
   }
 
   var VIEWS = { hoy: viewHoy, buzon: viewBuzon, proximos: viewProximos, todo: viewTodo, ambito: viewAmbito,
@@ -548,6 +571,17 @@
         if (confirm('¿Vaciar la papelera? Las tareas se borrarán para siempre.')) { D.tasks = D.tasks.filter(function (x) { return !x.deleted; }); save(); render(); } break;
       case 'export': exportData(); break;
       case 'import': $('importFile').click(); break;
+      /* cuenta */
+      case 'login': openLogin(); break;
+      case 'dologin':
+        var em = $('l-mail').value.trim(), pw = $('l-pass').value;
+        if (!em || !pw) { $('l-msg').textContent = 'Escribe el correo y la contraseña.'; break; }
+        $('l-msg').textContent = 'Entrando…';
+        Sync.signIn(em, pw).then(function () { closeSheet(); render(); }, function (err) { $('l-msg').textContent = err.message; });
+        break;
+      case 'logout':
+        if (confirm('¿Cerrar sesión? Los datos seguirán guardados en este dispositivo.')) { Sync.signOut(); render(); } break;
+      case 'syncnow': Sync.sync(); break;
       /* formulario de tarea */
       case 'fscope':
         form.scope = v;
@@ -595,6 +629,12 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden && $('sheet').classList.contains('hidden')) render(); });
 
   render();
+  if (window.Sync) Sync.init({
+    get: function () { return D; },
+    replace: function (d) { d.meta = d.meta || {}; D = d; C.save(localStorage, D); render(); },
+    refresh: function () { if (ui.view === 'mas' && $('sheet').classList.contains('hidden')) render(); },
+    idle: function () { return !drag && $('sheet').classList.contains('hidden'); }
+  });
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 })();
