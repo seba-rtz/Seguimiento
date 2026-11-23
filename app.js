@@ -15,7 +15,9 @@
 
   /* ---------- Google Calendar (solo lectura, vía función de Supabase) ---------- */
   var GK = 'seguimiento.gcal', GPAL = ['#6f7c99', '#c46fa8', '#3fa7b5', '#a9805a', '#8c9f4f', '#d0796a'];
-  function gBase(ev) { var c = D.meta.gColors && D.meta.gColors[ev.calName]; return c || GPAL[(ev.cal || 0) % GPAL.length]; }
+  var GDEF = [['trabajo', '#ff7b7b'], ['formaci', '#7aaed6'], ['obligaci', '#c5c230'], ['salud', '#8cc646'], ['descanso', '#b794f6'], ['universidad', '#4f9dff'], ['horario', '#4f9dff']];
+  function gDef(name) { var n = String(name || '').toLowerCase(); for (var i = 0; i < GDEF.length; i++) if (n.indexOf(GDEF[i][0]) >= 0) return GDEF[i][1]; return ''; }
+  function gBase(ev) { var c = D.meta.gColors && D.meta.gColors[ev.calName]; return c || gDef(ev.calName) || GPAL[(ev.cal || 0) % GPAL.length]; }
   function gMute(h) { // apaga el color: lo mezcla con un tono sepia
     var n = parseInt(h.slice(1), 16), k = 0.38, S = [139, 125, 107], ch = [n >> 16, (n >> 8) & 255, n & 255];
     var v = ch.map(function (a, i) { return Math.round(a * (1 - k) + S[i] * k); });
@@ -360,7 +362,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.4</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.5</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
