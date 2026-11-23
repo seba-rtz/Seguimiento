@@ -13,6 +13,61 @@
   };
   var form = null; // estado del formulario abierto
 
+  /* ---------- Google Calendar (solo lectura, vía función de Supabase) ---------- */
+  var GK = 'seguimiento.gcal', GCOL = '#6f7c99';
+  var G = { events: [], from: '', to: '', at: 0, loading: false, fail: 0, err: '', by: {} };
+  try { var gc = JSON.parse(localStorage.getItem(GK)); if (gc && gc.events) { G.events = gc.events; G.from = gc.from; G.to = gc.to; G.at = gc.at; } } catch (e) {}
+  function ldate(dt) { return dt.getFullYear() + '-' + C.pad(dt.getMonth() + 1) + '-' + C.pad(dt.getDate()); }
+  function indexG() {
+    G.by = {};
+    G.events.forEach(function (ev) {
+      var a, b;
+      if (ev.allDay) { a = ev.start; b = C.addDays(ev.end, -1); if (b < a) b = a; }
+      else { var s = new Date(ev.start), e = new Date(ev.end); a = ldate(s); b = ldate(new Date(Math.max(s.getTime(), e.getTime() - 1))); }
+      var d = a, n = 0;
+      while (d <= b && n < 31) { (G.by[d] = G.by[d] || []).push(ev); d = C.addDays(d, 1); n++; }
+    });
+  }
+  indexG();
+  function gOn(d) {
+    return (G.by[d] || []).slice().sort(function (x, y) { return (y.allDay ? 1 : 0) - (x.allDay ? 1 : 0) || (x.start < y.start ? -1 : x.start > y.start ? 1 : 0); });
+  }
+  function gMins(ev, d) {
+    var ds = C.parse(d).getTime();
+    var s = Math.max(0, Math.round((new Date(ev.start).getTime() - ds) / 60000));
+    var e = Math.min(1440, Math.round((new Date(ev.end).getTime() - ds) / 60000));
+    if (e <= s) e = Math.min(1440, s + 30);
+    return [s, e];
+  }
+  function hm(m) { return C.pad(Math.floor(m / 60)) + ':' + C.pad(m % 60); }
+  function gTime(ev, d) { if (ev.allDay) return 'Todo el día'; var m = gMins(ev, d); return hm(m[0]) + '–' + hm(m[1]); }
+  function gRow(ev, d) {
+    var m = [gTime(ev, d)]; if (ev.location) m.push(ev.location); m.push('Google Calendar');
+    return '<div class="gev" style="--c:' + GCOL + '"><span class="bar"></span><div class="body"><div class="t">' + esc(ev.title) + '</div><div class="m">' + esc(m.join(' · ')) + '</div></div></div>';
+  }
+  function gList(d) { return gOn(d).map(function (ev) { return gRow(ev, d); }).join(''); }
+  function gSession() { return !!(window.Sync && Sync.info().email); }
+  function ensureG(force) {
+    if (!gSession() || G.loading) return;
+    var td = C.today(), lo = ui.calSel < td ? ui.calSel : td, hi = ui.calSel > td ? ui.calSel : td;
+    var covers = G.from && G.from <= C.addDays(lo, -7) && G.to >= C.addDays(hi, 14);
+    if (!force && covers && Date.now() - G.at < 600000) return;
+    if (!force && Date.now() - G.fail < 60000) return;
+    var from = C.addDays(lo, -40), to = C.addDays(hi, 120);
+    G.loading = true;
+    Sync.calendar(C.parse(from).toISOString(), C.parse(to).toISOString()).then(function (evs) {
+      var changed = JSON.stringify(evs) !== JSON.stringify(G.events);
+      G.events = evs; G.from = from; G.to = to; G.at = Date.now(); G.err = ''; G.fail = 0;
+      try { localStorage.setItem(GK, JSON.stringify({ events: evs, from: from, to: to, at: G.at })); } catch (e) {}
+      indexG(); G.loading = false;
+      if ((changed || force) && !drag && $('sheet').classList.contains('hidden')) render();
+    }, function (e) {
+      G.loading = false; G.fail = Date.now();
+      G.err = e instanceof TypeError ? 'Sin conexión; se muestran los últimos eventos guardados.' : String(e.message || e);
+      if (ui.view === 'mas' && $('sheet').classList.contains('hidden')) render();
+    });
+  }
+
   function save() { C.save(localStorage, D); if (window.Sync) Sync.changed(); }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
   function longDate(s) { var d = C.parse(s); return DIAS[C.weekday(d)] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
@@ -101,6 +156,7 @@
     setTop('Hoy', longDate(td) + (items.length ? ' · ' + pend + ' pendientes' : ''));
     var h = '';
     if (od.length) h += '<div class="sec">Atrasadas</div>' + list(od, true);
+    if (gOn(td).length) h += '<div class="sec">Horario de hoy</div>' + gList(td);
     h += '<div class="sec">Tareas de hoy</div>' + list(items, false, 'No hay tareas para hoy.');
     h += '<div class="sec">Registro de cumplimiento</div>' + weekGrid();
     h += '<div class="note">Toca una casilla para marcar si cumpliste el objetivo del día en ese ámbito. Es independiente de las tareas.</div>' +
@@ -120,7 +176,7 @@
     setTop('Próximos 7 días', 'Desde mañana');
     for (var i = 1; i <= 7; i++) {
       var d = C.addDays(td, i), items = C.tasksOn(D, d);
-      h += '<div class="sec"><span>' + longDate(d) + '</span></div>' + (items.length ? list(items, false) : '<div class="note" style="margin:0 4px 6px">Sin tareas</div>');
+      h += '<div class="sec"><span>' + longDate(d) + '</span></div>' + gList(d) + (items.length ? list(items, false) : (gOn(d).length ? '' : '<div class="note" style="margin:0 4px 6px">Sin tareas</div>'));
     }
     return h;
   }
@@ -151,7 +207,7 @@
     return h + list(items, true, 'No hay tareas pendientes en este ámbito.');
   }
 
-  function hasTasks(d) { return D.tasks.some(function (t) { return !t.deleted && C.occursOn(t, d); }); }
+  function hasTasks(d) { return !!G.by[d] || D.tasks.some(function (t) { return !t.deleted && C.occursOn(t, d); }); }
   function dayCell(d, month) {
     var cls = 'day' + (d === C.today() ? ' today' : '') + (d === ui.calSel ? ' sel' : '') + (hasTasks(d) ? ' has' : '') +
       (month && d.slice(0, 7) !== month ? ' out' : '');
@@ -179,7 +235,7 @@
     var mode = D.meta.calMode === 'dia' ? 'dia' : 'lista';
     h += '<div class="seg"><button class="' + (mode === 'lista' ? 'on' : '') + '" data-a="calmode" data-v="lista">Lista</button>' +
       '<button class="' + (mode === 'dia' ? 'on' : '') + '" data-a="calmode" data-v="dia">Día por horas</button></div>';
-    if (mode === 'lista') return h + '<div class="sec">' + longDate(sel) + '</div>' + list(C.tasksOn(D, sel), false, 'Sin tareas este día.');
+    if (mode === 'lista') return h + '<div class="sec">' + longDate(sel) + '</div>' + gList(sel) + list(C.tasksOn(D, sel), false, gOn(sel).length ? '' : 'Sin tareas este día.');
     return h + timeline(sel);
   }
 
@@ -193,11 +249,15 @@
   function timeline(sel) {
     var items = C.tasksOn(D, sel);
     var untimed = items.filter(function (x) { return !x.t.time; });
+    var gAll = gOn(sel).filter(function (ev) { return ev.allDay; });
+    var gTimed = gOn(sel).filter(function (ev) { return !ev.allDay; });
     var evs = items.filter(function (x) { return x.t.time; }).map(function (x) {
       var s = mins(x.t.time), e = x.t.end ? mins(x.t.end) : s + 60;
       if (e <= s) e = s + 30;
       return { x: x, s: s, e: Math.min(e, 1440) };
-    }).sort(function (a, b) { return a.s - b.s || a.e - b.e; });
+    });
+    gTimed.forEach(function (ev) { var m = gMins(ev, sel); evs.push({ g: ev, s: m[0], e: m[1] }); });
+    evs.sort(function (a, b) { return a.s - b.s || a.e - b.e; });
     // reparto en columnas para tareas que se solapan
     var cluster = [], colEnds = [], clEnd = 0;
     function flush() { cluster.forEach(function (ev) { ev.n = colEnds.length; }); cluster = []; colEnds = []; }
@@ -210,12 +270,19 @@
     });
     flush();
     var h = '';
+    if (gAll.length) h += '<div class="sec">Todo el día</div>' + gAll.map(function (ev) { return gRow(ev, sel); }).join('');
     if (untimed.length) h += '<div class="sec">Sin hora</div>' + list(untimed, false);
     h += '<div class="sec">' + longDate(sel) + '</div><div class="tl" id="tl" style="height:' + (24 * HH) + 'px">';
     for (var i = 0; i < 24; i++) {
       h += '<div class="hl" style="top:' + (i * HH) + 'px;height:' + HH + 'px" data-a="slot" data-h="' + i + '"><span>' + C.pad(i) + ':00</span></div>';
     }
     evs.forEach(function (ev) {
+      if (ev.g) {
+        var gtop = ev.s / 60 * HH, ght = Math.max((ev.e - ev.s) / 60 * HH - 2, 28);
+        h += '<div class="ev gcal" style="--c:' + GCOL + ';--fg:#ffffff;top:' + gtop + 'px;height:' + ght + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
+          ');width:calc((100% - 58px) / ' + ev.n + ' - 3px)"><div class="evb"><div class="evt">' + esc(ev.g.title) + '</div><div class="evm">' + hm(ev.s) + '–' + hm(ev.e) + (ev.g.location ? ' · ' + esc(ev.g.location) : '') + '</div></div></div>';
+        return;
+      }
       var t = ev.x.t, sc = C.scopeById(t.scope), st = C.getState(t, sel);
       var top = ev.s / 60 * HH, ht = Math.max((ev.e - ev.s) / 60 * HH - 2, 28);
       h += '<div class="ev ' + (st || '') + '" style="--c:' + sc.color + ';--fg:' + fgFor(sc.color) + ';top:' + top + 'px;height:' + ht + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
@@ -277,7 +344,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 6</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -287,7 +354,9 @@
     var h = '<div class="sec">Cuenta y sincronización</div><div class="card">';
     if (s.email) {
       h += '<div>' + esc(s.email) + '</div><div class="note" style="margin:2px 0 10px">' + esc(s.text) + '</div>' +
+        '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + '</div>' +
         '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
+        '<button class="btn block" data-a="gcalnow">Actualizar Google Calendar</button>' +
         '<button class="btn block" data-a="logout">Cerrar sesión</button>';
     } else {
       h += '<div class="note" style="margin:0 0 10px">Inicia sesión para que tus datos se guarden en la nube y sean los mismos en el móvil y en el ordenador.</div>' +
@@ -313,6 +382,7 @@
     var on = NAVMAP[ui.view] || ui.view;
     [].forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.view === on); });
     $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera');
+    ensureG();
     var tl = $('tl');
     if (tl && ui.tlScroll) { ui.tlScroll = false; window.scrollTo(0, Math.max(0, tl.getBoundingClientRect().top + window.scrollY + ui.tlFocus / 60 * HH - 430)); }
   }
@@ -581,7 +651,8 @@
         break;
       case 'logout':
         if (confirm('¿Cerrar sesión? Los datos seguirán guardados en este dispositivo.')) { Sync.signOut(); render(); } break;
-      case 'syncnow': Sync.sync(); break;
+      case 'syncnow': Sync.sync(); ensureG(true); break;
+      case 'gcalnow': ensureG(true); break;
       /* formulario de tarea */
       case 'fscope':
         form.scope = v;
