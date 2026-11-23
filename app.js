@@ -36,11 +36,11 @@
     for (var i = 0; i < (t.priority || 0); i++) dots += '<i></i>';
     var meta = [];
     if (showDate && d) meta.push(shortDate(d));
-    if (t.time) meta.push(t.time);
+    if (t.time) meta.push(t.end ? t.time + '–' + t.end : t.time);
     meta.push(sc.name);
     if (t.rec) meta.push('↻ ' + recLabel(t.rec));
     var mark = st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '';
-    return '<div class="task ' + (st || '') + '" style="--c:' + sc.color + '">' +
+    return '<div class="task ' + (st || '') + '" style="--c:' + sc.color + '" data-group="' + (d || '') + '|' + (t.priority || 0) + '|' + t.scope + '">' +
       '<span class="bar"></span><span class="dots">' + dots + '</span>' +
       '<button class="chk" data-a="toggle" data-id="' + t.id + '" data-date="' + (d || '') + '" aria-label="Completar">' + mark + '</button>' +
       '<div class="body" data-a="edit" data-id="' + t.id + '" data-date="' + (d || '') + '"><div class="t">' + esc(t.title) +
@@ -67,7 +67,7 @@
     });
     return out.sort(function (a, b) {
       if (a.d !== b.d) { if (!a.d) return 1; if (!b.d) return -1; return a.d < b.d ? -1 : 1; }
-      return (b.t.priority || 0) - (a.t.priority || 0);
+      return C.cmp(a, b);
     });
   }
 
@@ -103,7 +103,8 @@
     if (od.length) h += '<div class="sec">Atrasadas</div>' + list(od, true);
     h += '<div class="sec">Tareas de hoy</div>' + list(items, false, 'No hay tareas para hoy.');
     h += '<div class="sec">Registro de cumplimiento</div>' + weekGrid();
-    h += '<div class="note">Toca una casilla para marcar si cumpliste el objetivo del día en ese ámbito. Es independiente de las tareas.</div>';
+    h += '<div class="note">Toca una casilla para marcar si cumpliste el objetivo del día en ese ámbito. Es independiente de las tareas.</div>' +
+      '<div class="note">Mantén pulsada una tarea y arrástrala para ordenarla dentro de su grupo (misma fecha, prioridad y ámbito).</div>';
     return h;
   }
 
@@ -276,14 +277,15 @@
       '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
       '<div class="lbl">Ámbito</div><div class="chips" id="f-scope">' + chipsScope(form.scope) + '</div>' +
       '<div class="lbl">Prioridad</div><div class="chips" id="f-prio">' +
-      ['Sin puntos', '•', '••', '•••'].map(function (l, i) {
+      ['Sin prioridad', '•', '••', '•••'].map(function (l, i) {
         return '<button class="chip ' + (i === form.priority ? 'on' : '') + '" data-a="fprio" data-v="' + i + '">' + l + '</button>';
       }).join('') + '</div>' +
       '<div class="lbl">Fecha</div><div class="row"><input type="date" id="f-date" value="' + (date || '') + '">' +
       '<button class="btn" data-a="fdate" data-v="today">Hoy</button><button class="btn" data-a="fdate" data-v="tomorrow">Mañana</button>' +
       '<button class="btn" data-a="fdate" data-v="none">Sin fecha</button></div>' +
-      '<div class="lbl">Hora (opcional)</div><div class="row"><input type="time" id="f-time" value="' + (t && t.time ? t.time : '') +
-      '"><button class="btn" data-a="ftimeclear">Quitar</button></div>' +
+      '<div class="lbl">Hora (opcional)</div><div class="row"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio</div><input type="time" id="f-time" value="' + (t && t.time ? t.time : '') +
+      '"></div><div style="flex:1"><div class="note" style="margin:0 0 4px">Fin</div><input type="time" id="f-end" value="' + (t && t.end ? t.end : '') +
+      '"></div><button class="btn" data-a="ftimeclear" style="align-self:flex-end">Quitar</button></div>' +
       '<div class="lbl">Repetir</div><select id="f-rec">' +
       [['', 'No se repite'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes'], ['yearly', 'Cada año'], ['every', 'Cada X días, semanas o meses']]
         .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === form.recType ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
@@ -318,7 +320,9 @@
   function saveTask() {
     var title = $('f-title').value.trim();
     if (!title) { $('f-title').focus(); return; }
-    var date = $('f-date').value || null, time = $('f-time').value || null;
+    var date = $('f-date').value || null, time = $('f-time').value || null, end = $('f-end').value || null;
+    if (end && !time) { alert('Pon también la hora de inicio, o quita la de fin.'); return; }
+    if (end && end <= time) { alert('La hora de fin debe ser posterior a la de inicio.'); return; }
     var ty = $('f-rec').value, rec = null;
     if ((ty || time) && !date) date = C.today();
     if (ty === 'weekly') rec = { type: 'weekly', days: form.days.slice().sort() };
@@ -327,7 +331,7 @@
     var t = form.id ? findTask(form.id) : null;
     if (!t) { t = { id: C.uid(), created: Date.now() }; D.tasks.push(t); }
     var wasRec = !!t.rec;
-    t.title = title; t.scope = form.scope; t.priority = form.priority; t.date = date; t.time = time; t.rec = rec;
+    t.title = title; t.scope = form.scope; t.priority = form.priority; t.date = date; t.time = time; t.end = end; t.rec = rec;
     // Al cambiar entre repetitiva y única, los estados anteriores ya no valen.
     if (wasRec !== !!rec) { t.states = {}; t.state = null; t.ex = []; }
     ui.lastScope = form.scope;
@@ -395,7 +399,61 @@
     save(); render();
   }
 
+
+  /* ---------- Arrastrar para ordenar (mantener pulsado) ---------- */
+  var drag = null, pressT = null, press = null, noClickUntil = 0;
+  function pt(e) { var p = e.touches && e.touches[0] ? e.touches[0] : e; return { x: p.clientX, y: p.clientY }; }
+  function pressStart(e) {
+    if (e.type === 'mousedown' && e.button !== 0) return;
+    if (drag || !$('sheet').classList.contains('hidden')) return;
+    var row = e.target.closest ? e.target.closest('.task') : null;
+    if (!row || e.target.closest('.chk')) return;
+    var p = pt(e); press = p;
+    pressT = setTimeout(function () { pressT = null; startDrag(row, p); }, 350);
+  }
+  function startDrag(row, p) {
+    drag = { row: row, group: row.dataset.group, box: row.parentNode };
+    row.classList.add('drag'); document.body.classList.add('dragging');
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
+  function moveDrag(p) {
+    var row = drag.row;
+    var sibs = [].filter.call(drag.box.querySelectorAll('.task'), function (r) { return r !== row && r.dataset.group === drag.group; });
+    var target = null;
+    for (var i = 0; i < sibs.length; i++) {
+      var rc = sibs[i].getBoundingClientRect();
+      if (p.y < rc.top + rc.height / 2) { target = sibs[i]; break; }
+    }
+    if (target) { if (row.nextElementSibling !== target) drag.box.insertBefore(row, target); }
+    else if (sibs.length) { var last = sibs[sibs.length - 1]; if (last.nextElementSibling !== row) last.after(row); }
+    if (p.y > window.innerHeight - 130) window.scrollBy(0, 10); else if (p.y < 110) window.scrollBy(0, -10);
+  }
+  function endDrag() {
+    var rows = [].filter.call(drag.box.querySelectorAll('.task'), function (r) { return r.dataset.group === drag.group; });
+    var tasks = rows.map(function (r) { return findTask(r.querySelector('[data-id]').dataset.id); });
+    var vals = tasks.map(C.orderOf).sort(function (a, b) { return a - b; });
+    for (var i = 1; i < vals.length; i++) if (vals[i] <= vals[i - 1]) vals[i] = vals[i - 1] + 1;
+    tasks.forEach(function (t, k) { t.order = vals[k]; });
+    drag.row.classList.remove('drag'); document.body.classList.remove('dragging');
+    drag = null; noClickUntil = Date.now() + 400;
+    save(); render();
+  }
+  function pressMove(e) {
+    var p = pt(e);
+    if (drag) { e.preventDefault(); moveDrag(p); return; }
+    if (pressT && press && Math.abs(p.y - press.y) + Math.abs(p.x - press.x) > 10) { clearTimeout(pressT); pressT = null; }
+  }
+  function pressEnd() { if (pressT) { clearTimeout(pressT); pressT = null; } if (drag) endDrag(); }
+  document.addEventListener('touchstart', pressStart, { passive: true });
+  document.addEventListener('touchmove', pressMove, { passive: false });
+  document.addEventListener('touchend', pressEnd);
+  document.addEventListener('touchcancel', pressEnd);
+  document.addEventListener('mousedown', pressStart);
+  document.addEventListener('mousemove', pressMove);
+  document.addEventListener('mouseup', pressEnd);
+
   document.addEventListener('click', function (e) {
+    if (Date.now() < noClickUntil) return;
     var el = e.target.closest('[data-a]');
     if (!el) return;
     var a = el.dataset.a, id = el.dataset.id, d = el.dataset.date, v = el.dataset.v, t;
@@ -446,7 +504,7 @@
         [].forEach.call($('f-prio').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); break;
       case 'fdate':
         $('f-date').value = v === 'today' ? C.today() : v === 'tomorrow' ? C.addDays(C.today(), 1) : ''; break;
-      case 'ftimeclear': $('f-time').value = ''; break;
+      case 'ftimeclear': $('f-time').value = ''; $('f-end').value = ''; break;
       case 'fday':
         var k = form.days.indexOf(+v); if (k >= 0) form.days.splice(k, 1); else form.days.push(+v);
         el.classList.toggle('on'); break;

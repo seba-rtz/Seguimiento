@@ -110,3 +110,8 @@ input[type=date],input[type=time]{min-height:46px}
 .pill.cumplido{background:#17301f;color:#34c759}
 .menu button{display:block;width:100%;text-align:left;padding:15px 6px;border-bottom:1px solid var(--line);font-size:17px}
 .note{color:var(--muted);font-size:13px;margin-top:10px}
+
+/* arrastrar */
+.task{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.task.drag{transform:scale(1.025);box-shadow:0 8px 22px rgba(0,0,0,.6);background:var(--card2);z-index:3}
+body.dragging{overscroll-behavior:none}

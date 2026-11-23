@@ -91,14 +91,19 @@
     return null;
   }
 
-  function sortItems(items) { // items: [{t, d}]
-    return items.sort(function (a, b) {
-      var ta = a.t.time || '99:99', tb = b.t.time || '99:99';
-      if (ta !== tb) return ta < tb ? -1 : 1;
-      if ((b.t.priority || 0) !== (a.t.priority || 0)) return (b.t.priority || 0) - (a.t.priority || 0);
-      return a.t.title.localeCompare(b.t.title, 'es');
-    });
+  // Orden: (la fecha la fija cada vista) -> prioridad -> ámbito -> orden manual.
+  function scopeIndex(id) { for (var i = 0; i < SCOPES.length; i++) if (SCOPES[i].id === id) return i; return 99; }
+  function orderOf(t) { return t.order != null ? t.order : (t.created || 0); }
+  function cmp(a, b) {
+    var pa = a.t.priority || 0, pb = b.t.priority || 0;
+    if (pa !== pb) return pb - pa;
+    var sa = scopeIndex(a.t.scope), sb = scopeIndex(b.t.scope);
+    if (sa !== sb) return sa - sb;
+    var oa = orderOf(a.t), ob = orderOf(b.t);
+    if (oa !== ob) return oa - ob;
+    return a.t.title.localeCompare(b.t.title, 'es');
   }
+  function sortItems(items) { return items.sort(cmp); } // items: [{t, d}]
 
   function tasksOn(data, d) {
     var out = [];
@@ -143,7 +148,7 @@
     scopeById: scopeById, pad: pad, fmt: fmt, parse: parse, today: today, addDays: addDays,
     diffDays: diffDays, weekday: weekday, dim: dim, mondayOf: mondayOf, quarterOf: quarterOf,
     shiftQuarter: shiftQuarter, occursOn: occursOn, getState: getState, setState: setState,
-    nextOccurrence: nextOccurrence, sortItems: sortItems, tasksOn: tasksOn, emptyData: emptyData,
+    nextOccurrence: nextOccurrence, sortItems: sortItems, cmp: cmp, orderOf: orderOf, tasksOn: tasksOn, emptyData: emptyData,
     uid: uid, validate: validate, load: load, save: save, weekTotals: weekTotals
   };
   if (typeof module !== 'undefined') module.exports = root.Core;
