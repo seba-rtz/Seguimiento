@@ -56,7 +56,7 @@
     if (!force && Date.now() - G.fail < 60000) return;
     var from = C.addDays(lo, -40), to = C.addDays(hi, 120);
     G.loading = true;
-    Sync.calendar(C.parse(from).toISOString(), C.parse(to).toISOString()).then(function (evs) {
+    Sync.calendar(C.parse(from).toISOString(), C.parse(to).toISOString(), D.meta.uniUrl || '').then(function (evs) {
       var changed = JSON.stringify(evs) !== JSON.stringify(G.events);
       G.warn = evs.warn || []; G.events = evs; G.from = from; G.to = to; G.at = Date.now(); G.err = ''; G.fail = 0;
       try { localStorage.setItem(GK, JSON.stringify({ events: evs, from: from, to: to, at: G.at })); } catch (e) {}
@@ -345,7 +345,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.1</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.2</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -358,6 +358,7 @@
         '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + (G.warn && G.warn.length ? ' Avisos: ' + esc(G.warn.join(' · ')) : '') + '</div>' +
         '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
         '<button class="btn block" data-a="gcalnow">Actualizar Google Calendar</button>' +
+        '<button class="btn block" data-a="uni">' + (D.meta.uniUrl ? 'Cambiar enlace del horario de la universidad' : 'Añadir horario de la universidad') + '</button>' +
         '<button class="btn block" data-a="logout">Cerrar sesión</button>';
     } else {
       h += '<div class="note" style="margin:0 0 10px">Inicia sesión para que tus datos se guarden en la nube y sean los mismos en el móvil y en el ordenador.</div>' +
@@ -654,6 +655,12 @@
         if (confirm('¿Cerrar sesión? Los datos seguirán guardados en este dispositivo.')) { Sync.signOut(); render(); } break;
       case 'syncnow': Sync.sync(); ensureG(true); break;
       case 'gcalnow': ensureG(true); break;
+      case 'uni':
+        var uv = prompt('Pega aquí el enlace del horario de la universidad (déjalo vacío para quitarlo):', D.meta.uniUrl || '');
+        if (uv === null) break;
+        uv = uv.trim();
+        if (uv && !/^https:\/\//i.test(uv)) { alert('El enlace debe empezar por https://'); break; }
+        D.meta.uniUrl = uv; save(); G.fail = 0; ensureG(true); render(); break;
       /* formulario de tarea */
       case 'fscope':
         form.scope = v;
