@@ -86,6 +86,76 @@
     });
   }
 
+  /* ---------- Avisos (notificaciones a la hora de las tareas con hora) ---------- */
+  var planT = null;
+  function pushSupported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  function b64(s) {
+    var p = '='.repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')), o = new Uint8Array(r.length);
+    for (var i = 0; i < r.length; i++) o[i] = r.charCodeAt(i);
+    return o;
+  }
+  function planAvisos(force) {
+    if (!D.meta.avisosOn || !window.Sync || !Sync.info().email) return;
+    clearTimeout(planT);
+    planT = setTimeout(function () { doPlan(force); }, force ? 100 : 4000);
+  }
+  function doPlan(force) {
+    var list = [], now = Date.now(), td = C.today();
+    for (var i = 0; i <= 14; i++) {
+      var d = C.addDays(td, i);
+      C.tasksOn(D, d).forEach(function (x) {
+        var t = x.t;
+        if (!t.time || C.getState(t, x.d)) return;
+        var w = C.parse(x.d), p = t.time.split(':');
+        w.setHours(+p[0], +p[1], 0, 0);
+        if (w.getTime() <= now) return;
+        var sc = C.scopeById(t.scope);
+        list.push({ enviar_en: w.toISOString(), titulo: t.title, cuerpo: sc.name + ' · ' + t.time + (t.end ? '–' + t.end : '') });
+      });
+    }
+    list = list.slice(0, 200);
+    var sig = JSON.stringify(list);
+    if (!force && localStorage.getItem('seguimiento.avisos-plan') === sig) return;
+    Sync.rest('/rest/v1/avisos?enviado=eq.false&enviar_en=gt.' + encodeURIComponent(new Date(now).toISOString()), { method: 'DELETE', prefer: 'return=minimal' }).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      if (!list.length) return { ok: true };
+      return Sync.rest('/rest/v1/avisos', { method: 'POST', prefer: 'return=minimal', body: list });
+    }).then(function (r) { if (r && r.ok) localStorage.setItem('seguimiento.avisos-plan', sig); }, function () {});
+  }
+  function enableAvisos() {
+    if (!pushSupported()) { alert('Este navegador no permite avisos. En el iPhone hay que abrir la app desde el icono de la pantalla de inicio (iOS 16.4 o superior).'); return; }
+    Notification.requestPermission().then(function (p) {
+      if (p !== 'granted') { alert('No has dado permiso. Puedes cambiarlo en Ajustes > Notificaciones > Seguimiento.'); return; }
+      return Promise.all([navigator.serviceWorker.ready, Sync.pushKey()]).then(function (a) {
+        var reg = a[0];
+        return reg.pushManager.getSubscription().then(function (sub) {
+          return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(a[1]) });
+        });
+      }).then(function (sub) {
+        return Sync.rest('/rest/v1/suscripciones?on_conflict=endpoint', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: { endpoint: sub.endpoint, datos: sub.toJSON() } });
+      }).then(function (r) {
+        if (!r.ok) throw new Error('error ' + r.status);
+        D.meta.avisosOn = true; save(); planAvisos(true); render();
+        alert('Avisos activados en este dispositivo.');
+      });
+    }).catch(function (e) { alert('No se pudieron activar los avisos: ' + (e.message || e)); });
+  }
+  function disableAvisos() {
+    D.meta.avisosOn = false; save(); localStorage.removeItem('seguimiento.avisos-plan');
+    Sync.rest('/rest/v1/avisos?enviado=eq.false', { method: 'DELETE', prefer: 'return=minimal' }).catch(function () {});
+    if (pushSupported()) navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+      if (!sub) return;
+      var ep = sub.endpoint; sub.unsubscribe();
+      return Sync.rest('/rest/v1/suscripciones?endpoint=eq.' + encodeURIComponent(ep), { method: 'DELETE', prefer: 'return=minimal' });
+    }).catch(function () {});
+    render();
+  }
+  function testAviso() {
+    Sync.rest('/rest/v1/avisos', { method: 'POST', prefer: 'return=minimal', body: [{ enviar_en: new Date(Date.now() - 1000).toISOString(), titulo: 'Aviso de prueba', cuerpo: 'Si lees esto, los avisos funcionan.' }] })
+      .then(function (r) { alert(r.ok ? 'Listo. El aviso de prueba llegará en menos de un minuto.' : 'No se pudo crear el aviso (error ' + r.status + ').'); },
+        function () { alert('No se pudo crear el aviso. Revisa la conexión y que has iniciado sesión.'); });
+  }
+
   function save() { C.save(localStorage, D); if (window.Sync) Sync.changed(); }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
   function longDate(s) { var d = C.parse(s); return DIAS[C.weekday(d)] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
@@ -361,7 +431,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.7</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 8</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -372,6 +442,8 @@
     if (s.email) {
       h += '<div>' + esc(s.email) + '</div><div class="note" style="margin:2px 0 10px">' + esc(s.text) + '</div>' +
         '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + (G.warn && G.warn.length ? ' Avisos: ' + esc(G.warn.join(' · ')) : '') + '</div>' +
+        '<div class="note" style="margin:0 0 10px">Avisos: ' + (D.meta.avisosOn ? 'activados. Llegan a la hora de las tareas que tienen hora.' : 'desactivados.') + '</div>' +
+        (D.meta.avisosOn ? '<button class="btn block" data-a="avisotest">Probar aviso ahora</button><button class="btn block" data-a="avisosoff">Desactivar avisos</button>' : '<button class="btn block" data-a="avisoson">Activar avisos en este dispositivo</button>') +
         gColorRows() +
         '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
         '<button class="btn block" data-a="gcalnow">Actualizar Google Calendar</button>' +
@@ -403,6 +475,7 @@
     [].forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.view === on); });
     $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera');
     ensureG();
+    planAvisos();
     var tl = $('tl');
     if (tl && ui.tlScroll) { ui.tlScroll = false; window.scrollTo(0, Math.max(0, tl.getBoundingClientRect().top + window.scrollY + ui.tlFocus / 60 * HH - 430)); }
   }
@@ -673,6 +746,9 @@
         if (confirm('¿Cerrar sesión? Los datos seguirán guardados en este dispositivo.')) { Sync.signOut(); render(); } break;
       case 'syncnow': Sync.sync(); ensureG(true); break;
       case 'gcalnow': ensureG(true); break;
+      case 'avisoson': enableAvisos(); break;
+      case 'avisosoff': disableAvisos(); break;
+      case 'avisotest': testAviso(); break;
       case 'gurls':
         var gv = prompt('Pega aquí los enlaces secretos iCal de tus calendarios de Google, separados por un espacio (déjalo vacío para quitarlos):', D.meta.gUrls || '');
         if (gv === null) break;
