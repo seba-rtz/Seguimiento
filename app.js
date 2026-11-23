@@ -15,7 +15,22 @@
 
   /* ---------- Google Calendar (solo lectura, vía función de Supabase) ---------- */
   var GK = 'seguimiento.gcal', GPAL = ['#6f7c99', '#c46fa8', '#3fa7b5', '#a9805a', '#8c9f4f', '#d0796a'];
-  function gcol(ev) { return GPAL[(ev.cal || 0) % GPAL.length]; }
+  function gBase(ev) { var c = D.meta.gColors && D.meta.gColors[ev.calName]; return c || GPAL[(ev.cal || 0) % GPAL.length]; }
+  function gMute(h) { // apaga el color: lo mezcla con un tono sepia
+    var n = parseInt(h.slice(1), 16), k = 0.38, S = [139, 125, 107], ch = [n >> 16, (n >> 8) & 255, n & 255];
+    var v = ch.map(function (a, i) { return Math.round(a * (1 - k) + S[i] * k); });
+    return '#' + ((1 << 24) | (v[0] << 16) | (v[1] << 8) | v[2]).toString(16).slice(1);
+  }
+  function gcol(ev) { return gMute(gBase(ev)); }
+  function gColorRows() {
+    var seen = {}, rows = '';
+    G.events.forEach(function (ev) {
+      if (seen[ev.calName]) return; seen[ev.calName] = 1;
+      rows += '<label style="display:flex;align-items:center;justify-content:space-between;padding:5px 0"><span>' + esc(ev.calName) +
+        '</span><input type="color" data-gcal="' + esc(ev.calName) + '" value="' + gBase(ev) + '" style="width:48px;height:32px;padding:0;border:0;background:none"></label>';
+    });
+    return rows ? '<div class="note" style="margin:0 0 4px">Color de cada calendario (se muestra apagado):</div>' + rows + '<div style="height:8px"></div>' : '';
+  }
   var G = { events: [], from: '', to: '', at: 0, loading: false, fail: 0, err: '', by: {} };
   try { var gc = JSON.parse(localStorage.getItem(GK)); if (gc && gc.events) { G.events = gc.events; G.from = gc.from; G.to = gc.to; G.at = gc.at; } } catch (e) {}
   function ldate(dt) { return dt.getFullYear() + '-' + C.pad(dt.getMonth() + 1) + '-' + C.pad(dt.getDate()); }
@@ -345,7 +360,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.3</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 7.4</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -356,6 +371,7 @@
     if (s.email) {
       h += '<div>' + esc(s.email) + '</div><div class="note" style="margin:2px 0 10px">' + esc(s.text) + '</div>' +
         '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + (G.warn && G.warn.length ? ' Avisos: ' + esc(G.warn.join(' · ')) : '') + '</div>' +
+        gColorRows() +
         '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
         '<button class="btn block" data-a="gcalnow">Actualizar Google Calendar</button>' +
         '<button class="btn block" data-a="gurls">' + (D.meta.gUrls ? 'Cambiar enlaces de los calendarios de Google' : 'Añadir enlaces de los calendarios de Google') + '</button>' +
@@ -713,6 +729,11 @@
   });
   // Al volver a abrir la app o cambiar de día, refrescar «Hoy».
   document.addEventListener('visibilitychange', function () { if (!document.hidden && $('sheet').classList.contains('hidden')) render(); });
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t && t.dataset && t.dataset.gcal) { D.meta.gColors = D.meta.gColors || {}; D.meta.gColors[t.dataset.gcal] = t.value; save(); render(); }
+  });
 
   render();
   if (window.Sync) Sync.init({
