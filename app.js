@@ -56,7 +56,7 @@
     if (!force && Date.now() - G.fail < 60000) return;
     var from = C.addDays(lo, -40), to = C.addDays(hi, 120);
     G.loading = true;
-    Sync.calendar(C.parse(from).toISOString(), C.parse(to).toISOString(), D.meta.uniUrl || '').then(function (evs) {
+    Sync.calendar(C.parse(from).toISOString(), C.parse(to).toISOString(), D.meta.uniUrl || '', D.meta.gUrls || '').then(function (evs) {
       var changed = JSON.stringify(evs) !== JSON.stringify(G.events);
       G.warn = evs.warn || []; G.events = evs; G.from = from; G.to = to; G.at = Date.now(); G.err = ''; G.fail = 0;
       try { localStorage.setItem(GK, JSON.stringify({ events: evs, from: from, to: to, at: G.at })); } catch (e) {}
