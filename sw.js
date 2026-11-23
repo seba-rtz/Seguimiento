@@ -1,6 +1,6 @@
 /* Service worker: la app funciona sin conexión. Con conexión, usa siempre la versión más nueva. */
-var V = 'seguimiento-v10';
-var FILES = ['./', 'index.html', 'styles.css?v=10', 'core.js?v=5', 'sync.js?v=10', 'app.js?v=10', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+var V = 'seguimiento-v11';
+var FILES = ['./', 'index.html', 'styles.css?v=11', 'core.js?v=11', 'sync.js?v=11', 'app.js?v=11', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(V).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
@@ -13,11 +13,16 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
   if (new URL(e.request.url).origin !== self.location.origin) return; // lo de Supabase nunca pasa por la caché
-  e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(function (r) {
-    var copy = r.clone();
-    caches.open(V).then(function (c) { c.put(e.request, copy); });
+  // Red primero (para ver siempre la última versión), pero si tarda más de 4 s se usa la copia guardada: así la app abre rápido con mala cobertura.
+  var net = fetch(e.request, { cache: 'no-cache' }).then(function (r) {
+    if (r.ok) { var copy = r.clone(); caches.open(V).then(function (c) { c.put(e.request, copy); }); } // nunca se guardan respuestas de error
     return r;
-  }).catch(function () { return caches.match(e.request).then(function (m) { return m || caches.match('index.html'); }); }));
+  });
+  var cached = function () {
+    return caches.match(e.request).then(function (m) { return m || (e.request.mode === 'navigate' ? caches.match('index.html') : null); });
+  };
+  var slow = new Promise(function (res) { setTimeout(res, 4000); }).then(cached).then(function (m) { return m || net; });
+  e.respondWith(Promise.race([net.catch(cached), slow]).then(function (r) { return r || Response.error(); }, function () { return Response.error(); }));
 });
 
 /* Avisos: llegan del servidor aunque la app esté cerrada. */
