@@ -87,7 +87,7 @@ input[type=date],input[type=time]{min-height:46px}
 .day.sel.today{color:#fff}
 
 /* registro semanal */
-.grid{display:grid;grid-template-columns:88px repeat(7,1fr) 32px;gap:5px;align-items:center}
+.grid{display:grid;grid-template-columns:88px repeat(7,1fr) 44px;gap:5px;align-items:center}
 .grid .h{text-align:center;font-size:12px;color:var(--muted)}
 .grid .h.today{color:var(--accent);font-weight:700}
 .grid .name{font-size:12.5px;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap}
@@ -235,3 +235,7 @@ body.noscroll{overflow:hidden}
 .qbar b{display:block;height:100%;border-radius:6px;background:var(--c)}
 .qp{flex:none;width:88px;text-align:right}
 .qp small{color:var(--muted);font-size:12px;margin-left:5px}
+
+.grid .tot.rk{font-weight:700;font-size:15px;color:var(--c)}
+.grid .tot.rk.z{font-weight:400;color:var(--muted)}
+.grid .h.rkh{font-size:11px}
