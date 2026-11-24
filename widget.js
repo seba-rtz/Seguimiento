@@ -1,4 +1,4 @@
-// SEGUIMIENTO-WIDGET v7 · Widget grande de Seguimiento para Scriptable (solo lectura)
+// SEGUIMIENTO-WIDGET v8 · Widget grande de Seguimiento para Scriptable (solo lectura)
 const BASE = 'https://seba-rtz.github.io/Seguimiento/';
 const SB = 'https://brclicidivpxqmzfxwsb.supabase.co';
 const KEY = 'sb_publishable_javfWi55UYm9z1f8pEYZMg_KSKgIlsa';
@@ -83,7 +83,7 @@ async function main() {
 
   const sw = Device.screenSize().width;
   const W = sw >= 428 ? 364 : sw >= 414 ? 360 : sw >= 390 ? 338 : 321;
-  w.setPadding(14, 16, 12, 16);
+  w.setPadding(14, 12, 12, 12);
   const DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
   const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const today = Core.today(), pd = Core.parse(today);
@@ -128,29 +128,30 @@ async function main() {
 
   /* Registro de cumplimiento de la semana */
   const monday = Core.mondayOf(today), tot = Core.weekTotals(D, monday);
-  const LW = 66, RW = 24, cw = 26;
+  const LW = 78, RW = 28;
+  const cw = Math.floor((W - 24 - LW - RW - 30 - 6) / 7);
   const gridRow = function (label, lcol, cells, total, tcol) {
     const r = w.addStack();
     r.centerAlignContent();
     r.spacing = 3;
     r.addSpacer();
     const l = r.addStack();
-    l.size = new Size(LW, 16);
+    l.size = new Size(LW, 19);
     l.centerAlignContent();
-    txt(l, label, 12, lcol);
+    txt(l, label, 13, lcol);
     cells.forEach(function (c) {
       const s = r.addStack();
-      s.size = new Size(cw, 16);
+      s.size = new Size(cw, 19);
       s.centerAlignContent();
       if (c.fill) { s.backgroundColor = c.fill; s.cornerRadius = 4; }
       if (c.border) { s.borderColor = ORANGE; s.borderWidth = 1.5; s.cornerRadius = 4; }
       if (c.t) { s.addSpacer(); txt(s, c.t, 11, c.tc); s.addSpacer(); }
     });
     const q = r.addStack();
-    q.size = new Size(RW, 16);
+    q.size = new Size(RW, 19);
     q.centerAlignContent();
     q.addSpacer();
-    txt(q, total, 13, tcol || GREY, true);
+    txt(q, total, 15, tcol || GREY, true);
     r.addSpacer();
   };
   const letters = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
