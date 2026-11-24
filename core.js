@@ -179,6 +179,14 @@
     try { storage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; }
   }
 
+  // Racha: días seguidos con el ámbito cumplido hasta hoy. Si hoy aún no está marcado no se rompe: cuenta hasta ayer.
+  function streak(data, id, td) {
+    var d = td, n = 0;
+    if (!(data.log[d] && data.log[d][id])) d = addDays(td, -1);
+    while (data.log[d] && data.log[d][id] && n < 5000) { n++; d = addDays(d, -1); }
+    return n;
+  }
+
   function weekTotals(data, monday) {
     var res = {};
     SCOPES.forEach(function (s) {
@@ -199,7 +207,7 @@
     shiftQuarter: shiftQuarter, quarterStart: quarterStart, quarterEnd: quarterEnd, goalStart: goalStart, goalEnd: goalEnd,
     quarterStats: quarterStats, occursOn: occursOn, getState: getState, setState: setState,
     nextOccurrence: nextOccurrence, sortItems: sortItems, cmp: cmp, orderOf: orderOf, tasksOn: tasksOn, emptyData: emptyData,
-    uid: uid, validate: validate, load: load, save: save, weekTotals: weekTotals
+    uid: uid, validate: validate, load: load, save: save, weekTotals: weekTotals, streak: streak
   };
   if (typeof module !== 'undefined') module.exports = root.Core;
 })(typeof window !== 'undefined' ? window : globalThis);
