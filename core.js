@@ -9,7 +9,6 @@
     { id: 'tareas', name: 'Tareas', color: '#f5c518' },
     { id: 'descanso', name: 'Descanso', color: '#a56bff' }
   ];
-  var PRIORITIES = ['Sin importancia', 'Poco importante', 'Menos importante', 'Importante'];
   var GOAL_STATES = [
     { id: 'pendiente', name: 'Pendiente' },
     { id: 'en_curso', name: 'En curso' },
@@ -17,10 +16,8 @@
   ];
   var KEY = 'seguimiento.v1';
 
-  function scopeById(id) {
-    for (var i = 0; i < SCOPES.length; i++) if (SCOPES[i].id === id) return SCOPES[i];
-    return SCOPES[3];
-  }
+  function scopeIndex(id) { for (var i = 0; i < SCOPES.length; i++) if (SCOPES[i].id === id) return i; return -1; }
+  function scopeById(id) { return SCOPES[scopeIndex(id)] || SCOPES[3]; }
 
   /* ---------- Fechas (texto AAAA-MM-DD, hora local) ---------- */
   function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -131,8 +128,6 @@
   }
 
   // Orden: (la fecha la fija cada vista) -> orden arrastrado -> prioridad -> ámbito -> creación.
-  function scopeIndex(id) { for (var i = 0; i < SCOPES.length; i++) if (SCOPES[i].id === id) return i; return 99; }
-  function orderOf(t) { return t.order != null ? t.order : (t.created || 0); }
   function cmp(a, b) {
     // 1.º el orden que el usuario ha arrastrado; 2.º el orden por defecto.
     var ma = a.t.order != null, mb = b.t.order != null;
@@ -141,7 +136,7 @@
     var pa = a.t.priority || 0, pb = b.t.priority || 0;
     if (pa !== pb) return pb - pa;
     var sa = scopeIndex(a.t.scope), sb = scopeIndex(b.t.scope);
-    if (sa !== sb) return sa - sb;
+    if (sa !== sb) return (sa < 0 ? 99 : sa) - (sb < 0 ? 99 : sb);
     var oa = a.t.created || 0, ob = b.t.created || 0;
     if (oa !== ob) return oa - ob;
     return a.t.title.localeCompare(b.t.title, 'es');
@@ -159,7 +154,7 @@
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
   function validate(d) {
-    return d && typeof d === 'object' && Array.isArray(d.tasks) && Array.isArray(d.goals) && d.log && typeof d.log === 'object';
+    return !!d && typeof d === 'object' && Array.isArray(d.tasks) && Array.isArray(d.goals) && d.log && typeof d.log === 'object';
   }
   // Si lo guardado está dañado, se conserva aparte antes de empezar de cero (para no perderlo al guardar encima).
   function rescue(storage, raw) { try { if (raw) storage.setItem(KEY + '.corrupta', raw); } catch (e) { /* sin espacio: no se puede hacer más */ } }
@@ -187,27 +182,14 @@
     return n;
   }
 
-  function weekTotals(data, monday) {
-    var res = {};
-    SCOPES.forEach(function (s) {
-      var n = 0;
-      for (var i = 0; i < 7; i++) {
-        var day = data.log[addDays(monday, i)];
-        if (day && day[s.id]) n++;
-      }
-      res[s.id] = n;
-    });
-    return res;
-  }
-
   root.Core = {
-    SCOPES: SCOPES, PRIORITIES: PRIORITIES, GOAL_STATES: GOAL_STATES, KEY: KEY,
+    SCOPES: SCOPES, GOAL_STATES: GOAL_STATES, KEY: KEY,
     scopeById: scopeById, pad: pad, fmt: fmt, parse: parse, today: today, addDays: addDays,
     diffDays: diffDays, weekday: weekday, dim: dim, mondayOf: mondayOf, quarterOf: quarterOf,
     shiftQuarter: shiftQuarter, quarterStart: quarterStart, quarterEnd: quarterEnd, goalStart: goalStart, goalEnd: goalEnd,
     quarterStats: quarterStats, occursOn: occursOn, getState: getState, setState: setState,
-    nextOccurrence: nextOccurrence, sortItems: sortItems, cmp: cmp, orderOf: orderOf, tasksOn: tasksOn, emptyData: emptyData,
-    uid: uid, validate: validate, load: load, save: save, weekTotals: weekTotals, streak: streak
+    nextOccurrence: nextOccurrence, sortItems: sortItems, cmp: cmp, tasksOn: tasksOn, emptyData: emptyData,
+    uid: uid, validate: validate, load: load, save: save, streak: streak
   };
   if (typeof module !== 'undefined') module.exports = root.Core;
 })(typeof window !== 'undefined' ? window : globalThis);
