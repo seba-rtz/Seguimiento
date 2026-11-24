@@ -227,7 +227,7 @@
     if (t.rec) meta.push('↻ ' + recLabel(t.rec));
     if (t.rec && t.mv && d) { var og = C.origOf(t, d); if (og && og !== d) meta.push('movida del ' + shortDate(og)); }
     var mark = st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '';
-    return '<div class="task ' + esc(st || '') + '" style="--c:' + sc.color + '" data-group="' + esc(d || '') + '">' +
+    return '<div class="task ' + esc(st || '') + (!st && d && d < C.today() ? ' late' : '') + '" style="--c:' + sc.color + '" data-group="' + esc(d || '') + '">' +
       '<span class="bar"></span><span class="dots">' + dots + '</span>' +
       '<button class="chk" data-a="toggle" data-id="' + esc(t.id) + '" data-date="' + esc(d || '') + '" aria-label="Completar">' + mark + '</button>' +
       '<div class="body" data-a="edit" data-id="' + esc(t.id) + '" data-date="' + esc(d || '') + '"><div class="t">' + esc(t.title) + '</div>' +
@@ -577,7 +577,7 @@
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 23</div>';
+    return h + '<div class="ver">Versión 24</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
