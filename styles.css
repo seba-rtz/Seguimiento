@@ -196,6 +196,18 @@ body.dragging{overscroll-behavior:none}
 #f-title{background:none;border:0;padding:8px 2px;font-size:21px;font-weight:600}
 .tk-notesbtn{display:flex;align-items:center;gap:8px;padding:8px 2px;color:var(--muted);font-size:15px}
 .tk-notesbtn.has{color:var(--text)}
-textarea{font:inherit;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;width:100%;font-size:16px;resize:none;min-width:0}
-#f-notes{min-height:52vh;line-height:1.45}
-#sheet .panel.tall{min-height:80vh}
+body.noscroll{overflow:hidden}
+#notespage{position:fixed;left:0;right:0;top:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding:calc(var(--sat) + 8px) 14px 0}
+#notespage .nhead{display:flex;align-items:center;gap:12px;padding:4px 0 8px;font-size:17px;font-weight:700}
+#notespage .ntool{display:flex;gap:6px;padding:6px 0 10px;overflow-x:auto;flex:none}
+#notespage .ntool button{min-width:42px;padding:9px 12px;border-radius:10px;background:var(--card2);font-size:15px;white-space:nowrap}
+#f-notes{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--card);border-radius:14px;padding:14px;font-size:16.5px;line-height:1.5;outline:none;margin-bottom:calc(8px + var(--sab));-webkit-user-select:text;user-select:text}
+#f-notes:empty:before,#f-notes:has(>br:only-child):before{content:attr(data-ph);color:var(--muted)}
+.nrich h3{font-size:18px;margin:.6em 0 .2em}
+.nrich ul,.nrich ol{margin:.3em 0;padding-left:1.4em}
+.nrich div{min-height:1.2em}
+.tk-notesbtn{align-items:flex-start;width:100%;text-align:left}
+.tk-notesbtn .np{flex:1;min-width:0}
+.tk-notesbtn .npl{font-size:12.5px;color:var(--muted);margin-bottom:3px}
+.tk-notesbtn .npv{color:var(--text);font-size:14.5px;line-height:1.4;max-height:6.2em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
+.tk-notesbtn .npv h3{font-size:15px;margin:0}
