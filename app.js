@@ -319,7 +319,7 @@
       var arr = sorted.filter(function (x) { return x.t.scope === s.id; });
       if (!arr.length) return;
       var closed = ui.inbClosed[s.id];
-      h += '<div class="grp" style="--c:' + s.color + '"><div class="gh" data-a="grp" data-s="' + s.id + '"><i class="gdot"></i><b>' + esc(s.name) + '</b><span class="gn">' + arr.length +
+      h += '<div class="grp" style="--c:' + s.color + '"><div class="gh" data-a="grp" data-s="' + s.id + '"><svg class="gico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><b>' + esc(s.name) + '</b><span class="gn">' + arr.length +
         '</span><span class="gch' + (closed ? ' c' : '') + '">⌄</span></div>' +
         (closed ? '' : '<div class="gbody">' + subGroups(arr, s.id, function (x) { return taskRow(x.t, null, false, true); }, false) + '</div>') + '</div>';
     });
@@ -513,7 +513,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 13</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 14</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
