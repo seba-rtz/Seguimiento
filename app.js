@@ -513,7 +513,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 14</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 15</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -577,13 +577,6 @@
     }).join('');
   }
 
-  function chipsSub() {
-    var cur = form.sub || '';
-    return '<button class="chip ' + (!cur ? 'on' : '') + '" data-a="fsub" data-v="">Ninguna</button>' +
-      subsOf(form.scope).filter(function (x) { return !x.archived || x.id === cur; }).map(function (x) {
-        return '<button class="chip ' + (x.id === cur ? 'on' : '') + '" data-a="fsub" data-v="' + esc(x.id) + '">' + esc(x.name) + '</button>';
-      }).join('') + '<button class="chip" data-a="fsubnew">＋ Nueva</button>';
-  }
   function openSubs() {
     var sc = C.scopeById(ui.scope), subs = subsOf(ui.scope);
     var h = '<h2>Subcategorías · ' + esc(sc.name) + '</h2>' +
@@ -618,45 +611,126 @@
     return null;
   }
 
+  /* ---------- Formulario de tarea (compacto, con desplegables) ---------- */
+  var IC = {
+    cal: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+    flag: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
+    note: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h3"/></svg>'
+  };
+  function dayWord(d) {
+    var td = C.today();
+    if (d === td) return 'Hoy';
+    if (d === C.addDays(td, 1)) return 'Mañana';
+    if (d === C.addDays(td, -1)) return 'Ayer';
+    var x = C.parse(d);
+    return DIAS[C.weekday(x)].slice(0, 3) + ', ' + x.getDate() + ' ' + MESES[x.getMonth()].slice(0, 3);
+  }
+  function formRec() { return form.recType ? { type: form.recType, days: form.days, n: form.n, unit: form.unit } : null; }
+  function timeText() { return form.time ? (form.end ? form.time + '–' + form.end : form.time) : ''; }
+  function nextMonday(from) { var d = C.addDays(from, 1); while (C.weekday(C.parse(d)) !== 0) d = C.addDays(d, 1); return d; }
+
+  function refreshTop() {
+    var sc = C.scopeById(form.scope), sb = subById(form.sub);
+    $('tp-scope').innerHTML = '<i class="sw" style="background:' + sc.color + '"></i>' + esc(sc.name) + '<span class="ch">▾</span>';
+    $('tp-sub').innerHTML = (sb ? esc(sb.name) : 'Subcategoría') + '<span class="ch">▾</span>';
+    $('tp-sub').classList.toggle('dim', !sb);
+    $('tp-prio').innerHTML = IC.flag + (form.priority ? '<b>' + '•'.repeat(form.priority) + '</b>' : '') + '<span class="ch">▾</span>';
+    $('tp-prio').classList.toggle('dim', !form.priority);
+    var parts = [form.date ? dayWord(form.date) : 'Sin fecha'];
+    if (form.time) parts.push(timeText());
+    var rl = recLabel(formRec());
+    if (rl) parts.push('↻ ' + rl);
+    var b = $('tk-datebtn');
+    b.innerHTML = IC.cal + '<span>' + esc(parts.join(' · ')) + '</span><span class="ch">' + (form.dateOpen ? '▴' : '▾') + '</span>';
+    b.classList.toggle('late', !!(form.date && form.date < C.today() && !form.recType));
+    $('tk-notesbtn').classList.toggle('has', !!(form.notes && form.notes.trim()));
+    $('tk-notesbtn').querySelector('.nt').textContent = form.notes && form.notes.trim() ? 'Notas (hay anotaciones)' : 'Notas';
+  }
+
+  function menuItem(a, v, label, on, cls, pre) {
+    return '<button class="mi ' + (on ? 'on ' : '') + (cls || '') + '" data-a="' + a + '" data-v="' + esc(v) + '">' + (pre || '') + '<span>' + label + '</span>' + (on ? '<span class="ck">✓</span>' : '') + '</button>';
+  }
+  function drawMenu() {
+    var el = $('tk-menu'), m = form.menu, h = '';
+    if (!m) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    if (m === 'scope') {
+      C.SCOPES.forEach(function (s) { h += menuItem('fscope', s.id, esc(s.name), s.id === form.scope, '', '<i class="sw" style="background:' + s.color + '"></i>'); });
+    } else if (m === 'sub') {
+      h += menuItem('fsub', '', 'Ninguna', !form.sub);
+      subsOf(form.scope).filter(function (x) { return !x.archived || x.id === form.sub; }).forEach(function (x) { h += menuItem('fsub', x.id, esc(x.name), x.id === form.sub); });
+      h += menuItem('fsubnew', '', '＋ Nueva subcategoría', false);
+    } else if (m === 'prio') {
+      [[3, '••• Importante'], [2, '•• Menos importante'], [1, '• Poco importante'], [0, 'Sin prioridad']].forEach(function (o) { h += menuItem('fprio', String(o[0]), o[1], form.priority === o[0]); });
+    } else if (m === 'more') {
+      var t = findTask(form.id), st = C.getState(t, form.ctx || t.date);
+      h += menuItem('wontdo', '', st === 'wontdo' ? 'Quitar «No lo haré»' : 'No lo haré', false);
+      if (t.rec && form.ctx) h += menuItem('delone', '', 'Eliminar solo el ' + shortDate(form.ctx), false, 'danger');
+      h += menuItem('deltask', '', t.rec ? 'Eliminar toda la serie' : 'Eliminar', false, 'danger');
+    }
+    el.innerHTML = h; el.classList.remove('hidden');
+  }
+
+  function drawDatePanel() {
+    var el = $('tk-datepanel');
+    if (!form.dateOpen) { el.classList.add('hidden'); return; }
+    var td = C.today(), mon = nextMonday(td);
+    var month = form.calMonth || (form.date || td).slice(0, 7), p = month.split('-');
+    var h = '<div class="qd">' + [['today', 'Hoy', td], ['tomorrow', 'Mañana', C.addDays(td, 1)], ['monday', 'Sig. lunes', mon], ['none', 'Sin fecha', null]].map(function (o) {
+      return '<button class="' + ((o[2] ? form.date === o[2] : !form.date) ? 'on' : '') + '" data-a="fdate" data-v="' + o[0] + '">' + o[1] + '</button>';
+    }).join('') + '</div>';
+    var start = C.mondayOf(month + '-01'), cells = '';
+    for (var i = 0; i < 42; i++) {
+      var d = C.addDays(start, i); if (i >= 35 && d.slice(0, 7) !== month) break;
+      cells += '<button class="day' + (d === td ? ' today' : '') + (d === form.date ? ' sel' : '') + (d.slice(0, 7) !== month ? ' out' : '') + '" data-a="fpick" data-date="' + d + '">' + C.parse(d).getDate() + '</button>';
+    }
+    h += '<div class="mini"><div class="calhead"><button class="ar" data-a="fcalmove" data-n="-1">‹</button><span class="name">' + MESES[+p[1] - 1] + ' ' + p[0] +
+      '</span><button class="ar" data-a="fcalmove" data-n="1">›</button></div><div class="calgrid">' + DL.map(function (l) { return '<span class="wd">' + l + '</span>'; }).join('') + cells + '</div></div>';
+    h += '<button class="acr" data-a="tktime"><span>Hora</span><span class="v">' + (timeText() || 'Ninguna') + ' ' + (form.timeOpen ? '▴' : '▾') + '</span></button>';
+    if (form.timeOpen) {
+      h += '<div class="row" style="padding:2px 0 0"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio</div><input type="time" id="f-time" value="' + (form.time || '') + '"></div>' +
+        '<div style="flex:1"><div class="note" style="margin:0 0 4px">Fin (opcional)</div><input type="time" id="f-end" value="' + (form.end || '') + '"></div></div>' +
+        '<button class="btn block" data-a="ftimeclear" style="margin:0 0 10px;padding:9px">Quitar hora</button>';
+    }
+    h += '<button class="acr" data-a="tkrec"><span>Repetir</span><span class="v">' + (recLabel(formRec()) || 'Ninguno') + ' ' + (form.recOpen ? '▴' : '▾') + '</span></button>';
+    if (form.recOpen) {
+      h += '<div style="padding:2px 0 8px"><select id="f-rec">' +
+        [['', 'No se repite'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes'], ['yearly', 'Cada año'], ['every', 'Cada X días, semanas o meses']]
+          .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === form.recType ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+        '</select><div id="f-rec-extra"></div></div>';
+    }
+    el.innerHTML = h; el.classList.remove('hidden');
+    drawRecExtra();
+  }
+
   function openTask(id, ctxDate, preset) {
     var t = id ? findTask(id) : null;
+    var date = t ? t.date : defaultDate();
     form = {
       id: id, ctx: ctxDate || (t && t.date) || null,
       scope: t ? t.scope : (ui.view === 'ambito' ? ui.scope : ui.lastScope),
       sub: t && subById(t.sub) ? t.sub : '',
       priority: t ? (t.priority || 0) : 0,
+      date: date || null, time: t && t.time ? t.time : ((preset && preset.time) || null), end: t && t.end ? t.end : null,
+      notes: t && t.notes ? t.notes : '',
       recType: t && t.rec ? t.rec.type : '',
       days: t && t.rec && t.rec.days ? t.rec.days.slice() : [],
-      n: t && t.rec && t.rec.n ? t.rec.n : 2, unit: t && t.rec && t.rec.unit ? t.rec.unit : 'd'
+      n: t && t.rec && t.rec.n ? t.rec.n : 2, unit: t && t.rec && t.rec.unit ? t.rec.unit : 'd',
+      menu: null, dateOpen: false, timeOpen: false, recOpen: false, calMonth: null
     };
-    var date = t ? t.date : defaultDate();
-    var h = '<h2>' + (t ? 'Editar tarea' : 'Nueva tarea') + '</h2>' +
+    if (form.time && !form.date) form.date = C.today();
+    var h = '<div id="tk-main"><div class="tk-top"><button class="pill" id="tp-scope" data-a="tkmenu" data-v="scope"></button>' +
+      '<button class="pill" id="tp-sub" data-a="tkmenu" data-v="sub"></button><button class="pill" id="tp-prio" data-a="tkmenu" data-v="prio"></button>' +
+      (t ? '<button class="pill sq" data-a="tkmenu" data-v="more" aria-label="Más opciones">⋯</button>' : '') + '</div>' +
+      '<div class="tk-menu hidden" id="tk-menu"></div>' +
+      '<button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
       '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
-      '<div class="lbl">Ámbito</div><div class="chips" id="f-scope">' + chipsScope(form.scope) + '</div>' +
-      '<div class="lbl">Subcategoría (opcional)</div><div class="chips" id="f-sub">' + chipsSub() + '</div>' +
-      '<div class="lbl">Prioridad</div><div class="chips" id="f-prio">' +
-      ['Sin prioridad', '•', '••', '•••'].map(function (l, i) {
-        return '<button class="chip ' + (i === form.priority ? 'on' : '') + '" data-a="fprio" data-v="' + i + '">' + l + '</button>';
-      }).join('') + '</div>' +
-      '<div class="lbl">Fecha</div><div class="row"><input type="date" id="f-date" value="' + (date || '') + '">' +
-      '<button class="btn" data-a="fdate" data-v="today">Hoy</button><button class="btn" data-a="fdate" data-v="tomorrow">Mañana</button>' +
-      '<button class="btn" data-a="fdate" data-v="none">Sin fecha</button></div>' +
-      '<div class="lbl">Hora (opcional)</div><div class="row"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio (opcional)</div><input type="time" id="f-time" value="' + (t && t.time ? t.time : (preset && preset.time) || '') +
-      '"></div><div style="flex:1"><div class="note" style="margin:0 0 4px">Fin (opcional)</div><input type="time" id="f-end" value="' + (t && t.end ? t.end : '') +
-      '"></div><button class="btn" data-a="ftimeclear" style="align-self:flex-end">Quitar</button></div>' +
-      '<div class="lbl">Repetir</div><select id="f-rec">' +
-      [['', 'No se repite'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes'], ['yearly', 'Cada año'], ['every', 'Cada X días, semanas o meses']]
-        .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === form.recType ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
-      '</select><div id="f-rec-extra"></div><div class="actions"><button class="btn primary" data-a="savetask">' + (t ? 'Guardar' : 'Añadir') + '</button>';
-    if (t) {
-      var st = C.getState(t, form.ctx || t.date);
-      h += '<button class="btn" data-a="wontdo">' + (st === 'wontdo' ? 'Quitar «No lo haré»' : 'No lo haré') + '</button>';
-      if (t.rec && form.ctx) h += '<button class="btn danger" data-a="delone">Eliminar solo el ' + shortDate(form.ctx) + '</button>';
-      h += '<button class="btn danger" data-a="deltask">' + (t.rec ? 'Eliminar toda la serie' : 'Eliminar') + '</button>';
-    }
-    h += '<button class="btn" data-a="close">Cancelar</button></div>';
+      '<button class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes">' + IC.note + '<span class="nt">Notas</span></button>' +
+      '<div class="row" style="margin-top:12px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div>' +
+      '<div id="tk-notes" class="hidden"><div class="row" style="margin-bottom:10px"><button class="pill sq" data-a="tknotesback" aria-label="Volver">‹ Volver</button></div>' +
+      '<div class="note" style="margin:0 0 8px">Notas de la tarea. Solo se ven aquí; no aparecen en las listas.</div>' +
+      '<textarea id="f-notes" placeholder="Escribe aquí tus anotaciones…">' + esc(form.notes) + '</textarea></div>';
     openSheet(h);
-    drawRecExtra();
+    refreshTop();
     if (!t) setTimeout(function () { var el = $('f-title'); if (el) el.focus(); }, 250);
   }
 
@@ -678,18 +752,23 @@
   function saveTask() {
     var title = $('f-title').value.trim();
     if (!title) { $('f-title').focus(); return; }
-    var date = $('f-date').value || null, time = $('f-time').value || null, end = $('f-end').value || null;
+    // Si los campos desplegables están abiertos, se toma lo que muestran.
+    if ($('f-time')) { form.time = $('f-time').value || null; form.end = $('f-end').value || null; }
+    if ($('f-n')) form.n = Math.max(1, parseInt($('f-n').value, 10) || 1);
+    if ($('f-unit')) form.unit = $('f-unit').value;
+    var date = form.date || null, time = form.time || null, end = form.end || null;
     if (end && !time) { alert('Pon también la hora de inicio, o quita la de fin.'); return; }
     if (end && end <= time) { alert('La hora de fin debe ser posterior a la de inicio.'); return; }
-    var ty = $('f-rec').value, rec = null;
+    var ty = form.recType, rec = null;
     if ((ty || time) && !date) date = C.today();
     if (ty === 'weekly') rec = { type: 'weekly', days: form.days.slice().sort() };
-    else if (ty === 'every') rec = { type: 'every', n: Math.max(1, parseInt($('f-n').value, 10) || 1), unit: $('f-unit').value };
+    else if (ty === 'every') rec = { type: 'every', n: Math.max(1, +form.n || 1), unit: form.unit };
     else if (ty) rec = { type: ty };
     var t = form.id ? findTask(form.id) : null;
     if (!t) { t = { id: C.uid(), created: Date.now() }; D.tasks.push(t); }
     var wasRec = !!t.rec;
     t.title = title; t.scope = form.scope; t.sub = (subById(form.sub) && subById(form.sub).scope === form.scope) ? form.sub : null; t.priority = form.priority; t.date = date; t.time = time; t.end = end; t.rec = rec;
+    if (form.notes && form.notes.trim()) t.notes = form.notes; else delete t.notes;
     // Al cambiar entre repetitiva y única, los estados anteriores ya no valen.
     if (wasRec !== !!rec) { t.states = {}; t.state = null; t.ex = []; }
     ui.lastScope = form.scope;
@@ -924,26 +1003,39 @@
         if (uv && !/^https:\/\//i.test(uv)) { alert('El enlace debe empezar por https://'); break; }
         D.meta.uniUrl = uv; save(); G.fail = 0; ensureG(true); render(); break;
       /* formulario de tarea */
-      case 'fsub': form.sub = v; $('f-sub').innerHTML = chipsSub(); break;
+      case 'tkmenu': form.menu = form.menu === v ? null : v; drawMenu(); break;
+      case 'fsub': form.sub = v; form.menu = null; drawMenu(); refreshTop(); break;
       case 'fsubnew':
         var ns = addSub(form.scope, prompt('Nombre de la nueva subcategoría'));
-        if (ns) { form.sub = ns.id; $('f-sub').innerHTML = chipsSub(); } break;
+        if (ns) form.sub = ns.id;
+        form.menu = null; drawMenu(); refreshTop(); break;
       case 'subman': openSubs(); break;
       case 'subadd': case 'subren': case 'subarch': case 'subdel': subAction(a, id); break;
       case 'fscope':
         form.scope = v;
         if (form.sub && (subById(form.sub) || {}).scope !== v) form.sub = '';
-        $('f-sub').innerHTML = chipsSub();
-        [].forEach.call($('f-scope').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); break;
-      case 'fprio':
-        form.priority = +v;
-        [].forEach.call($('f-prio').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); break;
+        form.menu = null; drawMenu(); refreshTop(); break;
+      case 'fprio': form.priority = +v; form.menu = null; drawMenu(); refreshTop(); break;
+      case 'tkdate': form.dateOpen = !form.dateOpen; form.menu = null; drawMenu(); drawDatePanel(); refreshTop(); break;
+      case 'tktime': form.timeOpen = !form.timeOpen; drawDatePanel(); break;
+      case 'tkrec': form.recOpen = !form.recOpen; drawDatePanel(); break;
       case 'fdate':
-        $('f-date').value = v === 'today' ? C.today() : v === 'tomorrow' ? C.addDays(C.today(), 1) : ''; break;
-      case 'ftimeclear': $('f-time').value = ''; $('f-end').value = ''; break;
+        if (v === 'none') { form.date = null; form.time = null; form.end = null; form.recType = ''; }
+        else form.date = v === 'today' ? C.today() : v === 'tomorrow' ? C.addDays(C.today(), 1) : nextMonday(C.today());
+        form.calMonth = form.date ? form.date.slice(0, 7) : null; drawDatePanel(); refreshTop(); break;
+      case 'fpick': form.date = d; form.calMonth = d.slice(0, 7); drawDatePanel(); refreshTop(); break;
+      case 'fcalmove':
+        var cm = (form.calMonth || (form.date || C.today()).slice(0, 7)).split('-'), cd = new Date(+cm[0], +cm[1] - 1 + (+el.dataset.n), 1);
+        form.calMonth = C.fmt(cd).slice(0, 7); drawDatePanel(); break;
+      case 'ftimeclear': form.time = null; form.end = null; drawDatePanel(); refreshTop(); break;
+      case 'tknotes':
+        $('tk-main').classList.add('hidden'); $('tk-notes').classList.remove('hidden'); $('sheet').querySelector('.panel').classList.add('tall');
+        setTimeout(function () { var x = $('f-notes'); if (x) x.focus(); }, 100); break;
+      case 'tknotesback':
+        flushNotes(); $('tk-notes').classList.add('hidden'); $('tk-main').classList.remove('hidden'); $('sheet').querySelector('.panel').classList.remove('tall'); refreshTop(); break;
       case 'fday':
         var k = form.days.indexOf(+v); if (k >= 0) form.days.splice(k, 1); else form.days.push(+v);
-        el.classList.toggle('on'); break;
+        el.classList.toggle('on'); refreshTop(); break;
       case 'savetask': saveTask(); break;
       case 'wontdo':
         t = findTask(form.id); var dd = form.ctx || t.date;
@@ -963,12 +1055,36 @@
   });
 
   document.addEventListener('change', function (e) {
-    if (e.target.id === 'f-rec') {
+    var id = e.target.id;
+    if (!form || !id) return;
+    if (id === 'f-rec') {
       form.recType = e.target.value;
-      if (form.recType && !$('f-date').value) $('f-date').value = C.today();
-      drawRecExtra();
-    } else if (e.target.id === 'f-n') form.n = Math.max(1, parseInt(e.target.value, 10) || 1);
-    else if (e.target.id === 'f-unit') form.unit = e.target.value;
+      if (form.recType && !form.date) form.date = C.today();
+      drawRecExtra(); refreshTop(); drawDatePanel();
+    } else if (id === 'f-n') { form.n = Math.max(1, parseInt(e.target.value, 10) || 1); refreshTop(); }
+    else if (id === 'f-unit') { form.unit = e.target.value; refreshTop(); }
+    else if (id === 'f-time' || id === 'f-end') {
+      form.time = $('f-time').value || null; form.end = $('f-end').value || null;
+      if (form.time && !form.date) form.date = C.today();
+      refreshTop();
+    }
+  });
+  // Notas de la tarea: en una tarea que ya existe se guardan solas al escribir.
+  var notesT = null;
+  function flushNotes() {
+    clearTimeout(notesT); notesT = null;
+    var x = $('f-notes'); if (!x || !form) return;
+    form.notes = x.value;
+    var t = form.id ? findTask(form.id) : null;
+    if (t) { if (x.value.trim()) t.notes = x.value; else delete t.notes; save(); }
+  }
+  document.addEventListener('input', function (e) {
+    if (e.target.id !== 'f-notes' || !form) return;
+    form.notes = e.target.value;
+    if (form.id) { clearTimeout(notesT); notesT = setTimeout(flushNotes, 600); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id === 'f-title' && form) { e.preventDefault(); saveTask(); }
   });
   $('importFile').addEventListener('change', function (e) {
     if (e.target.files[0]) importData(e.target.files[0]);
