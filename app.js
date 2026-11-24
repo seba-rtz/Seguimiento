@@ -513,7 +513,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 17</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 18</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -526,17 +526,67 @@
         '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + (G.warn && G.warn.length ? ' Avisos: ' + esc(G.warn.join(' · ')) : '') + '</div>' +
         '<div class="note" style="margin:0 0 10px">Avisos: ' + (D.meta.avisosOn ? 'activados. Llegan a la hora de las tareas que tienen hora.' : 'desactivados.') + '</div>' +
         (D.meta.avisosOn ? '<button class="btn block" data-a="avisotest">Probar aviso ahora</button><button class="btn block" data-a="avisosoff">Desactivar avisos</button>' : '<button class="btn block" data-a="avisoson">Activar avisos en este dispositivo</button>') +
-        gColorRows() +
         '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
-        '<button class="btn block" data-a="gcalnow">Actualizar Google Calendar</button>' +
-        '<button class="btn block" data-a="gurls">' + (D.meta.gUrls ? 'Cambiar enlaces de los calendarios de Google' : 'Añadir enlaces de los calendarios de Google') + '</button>' +
-        '<button class="btn block" data-a="uni">' + (D.meta.uniUrl ? 'Cambiar enlace del horario de la universidad' : 'Añadir horario de la universidad') + '</button>' +
+        '<button class="btn block" data-a="cals">Calendarios (' + calUrls().length + (D.meta.uniUrl ? ' + universidad' : '') + ')</button>' +
         '<button class="btn block" data-a="logout">Cerrar sesión</button>';
     } else {
       h += '<div class="note" style="margin:0 0 10px">Inicia sesión para que tus datos se guarden en la nube y sean los mismos en el móvil y en el ordenador.</div>' +
         '<button class="btn block primary" data-a="login">Iniciar sesión</button>';
     }
     return h + '</div>';
+  }
+  /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
+  function calUrls() { return String(D.meta.gUrls || '').split(' ').filter(Boolean); }
+  function calLabel(u) {
+    var m = u.match(/ical\/([^/]+)\//);
+    if (m) { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } }
+    var h = u.match(/^https:\/\/([^/]+)/i); return h ? h[1] : u;
+  }
+  function openCals() {
+    var us = calUrls();
+    var h = '<h2>Calendarios</h2>' +
+      '<button class="btn primary block" data-a="calnew" style="margin-bottom:12px">＋ Nuevo calendario</button>' +
+      '<div class="note" style="margin:0 0 10px">Los calendarios son solo de lectura: se ven en Calendario > «Día por horas». Cada enlace es el «enlace secreto en formato iCal» de Google Calendar (o el del horario de la universidad).</div>';
+    us.forEach(function (u, i) {
+      h += '<div class="card"><div>Calendario de Google ' + (i + 1) + '</div><div class="note" style="margin:2px 0 10px">' + esc(calLabel(u)) + '</div>' +
+        '<div class="row"><button class="btn" data-a="calchg" data-id="' + i + '">Cambiar enlace</button><button class="btn danger" data-a="caldel" data-id="' + i + '">Quitar</button></div></div>';
+    });
+    if (D.meta.uniUrl) {
+      h += '<div class="card"><div>Horario de la universidad</div><div class="note" style="margin:2px 0 10px">' + esc(calLabel(D.meta.uniUrl)) + '</div>' +
+        '<div class="row"><button class="btn" data-a="calchg" data-id="uni">Cambiar enlace</button><button class="btn danger" data-a="caldel" data-id="uni">Quitar</button></div></div>';
+    }
+    if (!us.length && !D.meta.uniUrl) h += '<div class="empty" style="padding:14px 10px">Aún no hay calendarios. Pulsa «Nuevo calendario».</div>';
+    h += '<div class="card">' + (gColorRows() || '<div class="note" style="margin:0">Cuando se carguen los eventos, aquí podrás elegir el color de cada calendario.</div>') + '</div>';
+    h += '<div class="actions"><button class="btn" data-a="gcalnow">Actualizar ahora</button><button class="btn" data-a="close">Cerrar</button></div>';
+    openSheet(h);
+  }
+  function calSave() { save(); G.fail = 0; ensureG(true); render(); openCals(); }
+  function calAction(a, id) {
+    var us = calUrls();
+    if (a === 'calnew') {
+      var nv = prompt('Pega el enlace secreto iCal del calendario nuevo (si es el horario de la universidad, también vale):', '');
+      if (nv === null) return;
+      nv = nv.trim();
+      if (!nv) return;
+      if (!/^https:\/\/\S+$/i.test(nv)) { alert('El enlace debe empezar por https:// y no llevar espacios'); return; }
+      if (/^https:\/\/app\.ual\.es\//i.test(nv)) {
+        if (D.meta.uniUrl && !confirm('Ya hay un horario de la universidad. ¿Lo cambias por este?')) return;
+        D.meta.uniUrl = nv;
+      } else if (us.indexOf(nv) < 0) { us.push(nv); D.meta.gUrls = us.join(' '); }
+      calSave();
+    } else if (a === 'calchg') {
+      var cur = id === 'uni' ? D.meta.uniUrl : us[+id];
+      var cv = prompt('Pega el enlace nuevo de este calendario:', cur || '');
+      if (cv === null) return;
+      cv = cv.trim();
+      if (!/^https:\/\/\S+$/i.test(cv)) { alert('El enlace debe empezar por https:// y no llevar espacios'); return; }
+      if (id === 'uni') D.meta.uniUrl = cv; else { us[+id] = cv; D.meta.gUrls = us.join(' '); }
+      calSave();
+    } else if (a === 'caldel') {
+      if (!confirm('¿Quitar este calendario de la app? (No se borra nada en Google.)')) return;
+      if (id === 'uni') D.meta.uniUrl = ''; else { us.splice(+id, 1); D.meta.gUrls = us.join(' '); }
+      calSave();
+    }
   }
   function openLogin() {
     openSheet('<h2>Iniciar sesión</h2>' +
@@ -1011,6 +1061,8 @@
       case 'avisoson': enableAvisos(); break;
       case 'avisosoff': disableAvisos(); break;
       case 'avisotest': testAviso(); break;
+      case 'cals': openCals(); break;
+      case 'calnew': case 'calchg': case 'caldel': calAction(a, id); break;
       case 'gurls':
         var gv = prompt('Pega aquí los enlaces secretos iCal de tus calendarios de Google, separados por un espacio (déjalo vacío para quitarlos):', D.meta.gUrls || '');
         if (gv === null) break;
