@@ -1,4 +1,4 @@
-// SEGUIMIENTO-WIDGET v9 · Widget grande de Seguimiento para Scriptable (solo lectura)
+// SEGUIMIENTO-WIDGET v10 · Widget grande de Seguimiento para Scriptable (solo lectura)
 const BASE = 'https://seba-rtz.github.io/Seguimiento/';
 const SB = 'https://brclicidivpxqmzfxwsb.supabase.co';
 const KEY = 'sb_publishable_javfWi55UYm9z1f8pEYZMg_KSKgIlsa';
@@ -127,7 +127,7 @@ async function main() {
   w.addSpacer();
 
   /* Registro de cumplimiento de la semana */
-  const monday = Core.mondayOf(today), tot = Core.weekTotals(D, monday);
+  const monday = Core.mondayOf(today);
   const LW = 78, RW = 28, RH = 21;
   // Ancho útil = ancho del widget - 24 de margen; 9 elementos por fila con 8 huecos de 3
   const cw = Math.floor((W - 24 - LW - RW - 24) / 7);
@@ -163,7 +163,7 @@ async function main() {
       const day = Core.addDays(monday, i), on = !!(D.log[day] && D.log[day][s.id]);
       cells.push({ fill: on ? new Color(s.color) : OFF, border: day === today });
     }
-    const rk = Core.streak ? Core.streak(D, s.id, today) : 0;
+    const rk = Core.streak(D, s.id, today);
     gridRow(s.name, new Color(s.color), cells, String(rk), rk ? new Color(s.color) : GREY);
     w.addSpacer(3);
   });
@@ -172,7 +172,7 @@ async function main() {
   /* Objetivos activos: el de fecha límite más cercana de cada uno de los tres primeros ámbitos */
   txt(w, 'Próximos objetivos', 11, GREY);
   w.addSpacer(4);
-  const gEnd = function (g) { return Core.goalEnd ? Core.goalEnd(g) : (g.end || ''); };
+  const gEnd = Core.goalEnd;
   ['salud', 'formacion', 'proyectos'].forEach(function (id) {
     const sc = Core.scopeById(id);
     const gs = D.goals.filter(function (g) { return g.scope === id && g.status !== 'cumplido'; })
