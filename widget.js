@@ -1,4 +1,4 @@
-// SEGUIMIENTO-WIDGET v5 · Widget grande de Seguimiento para Scriptable (solo lectura)
+// SEGUIMIENTO-WIDGET v6 · Widget grande de Seguimiento para Scriptable (solo lectura)
 const BASE = 'https://seba-rtz.github.io/Seguimiento/';
 const SB = 'https://brclicidivpxqmzfxwsb.supabase.co';
 const KEY = 'sb_publishable_javfWi55UYm9z1f8pEYZMg_KSKgIlsa';
@@ -128,12 +128,12 @@ async function main() {
 
   /* Registro de cumplimiento de la semana */
   const monday = Core.mondayOf(today), tot = Core.weekTotals(D, monday);
-  const LW = 64, RW = 22;
-  const cw = Math.floor((W - 32 - LW - RW - 24 - 8) / 7);
+  const LW = 70, RW = 24;
+  const cw = Math.floor((W - 32 - LW - RW - 30 - 12) / 7);
   const gridRow = function (label, lcol, cells, total, tcol) {
     const r = w.addStack();
     r.centerAlignContent();
-    r.spacing = 4;
+    r.spacing = 3;
     const l = r.addStack();
     l.size = new Size(LW, 16);
     l.centerAlignContent();
