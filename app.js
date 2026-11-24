@@ -358,7 +358,7 @@
       h += '<button class="chip sc ' + (s.id === ui.scope ? 'on' : '') + '" style="--c:' + s.color + '" data-a="scope" data-scope="' + s.id + '"><span class="sw"></span>' + s.name + '</button>';
     });
     h += '</div>';
-    h += '<div class="row" style="margin:0 2px 6px"><button class="btn" data-a="subman">Subcategorías' + (subsOf(ui.scope).length ? ' (' + subsOf(ui.scope).length + ')' : '') + '</button></div>';
+    h += '<div class="row" style="margin:0 2px 6px"><button class="btn" data-a="subman">Editar subcategorías' + (subsOf(ui.scope).length ? ' (' + subsOf(ui.scope).length + ')' : '') + '</button></div>';
     var items = allPending(ui.scope);
     if (!items.length) return h + '<div class="empty">No hay tareas pendientes en este ámbito.</div>';
     return h + subGroups(items, ui.scope, function (x) { return taskRow(x.t, x.d, true, false, true); }, true);
@@ -513,7 +513,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 16</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 17</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -605,6 +605,23 @@
     render(); openSubs();
   }
 
+  // Editar subcategorías desde el propio formulario de tarea (sin cerrarlo).
+  function formSubAction(a, id) {
+    var x = subById(id); if (!x || !form) return;
+    if (a === 'fsubren') { var nn = String(prompt('Nuevo nombre', x.name) || '').trim().slice(0, 40); if (nn) { x.name = nn; save(); } }
+    else if (a === 'fsubarch') { x.archived = !x.archived; save(); }
+    else if (a === 'fsubdel') {
+      var n = D.tasks.filter(function (t) { return t.sub === x.id; }).length;
+      if (!confirm('¿Borrar la subcategoría «' + x.name + '»? ' + (n ? 'Sus ' + n + ' tareas no se borran: pasan a «Sin subcategoría».' : ''))) return;
+      D.tasks.forEach(function (t) { if (t.sub === x.id) t.sub = null; });
+      D.meta.subs = D.meta.subs.filter(function (y) { return y.id !== x.id; });
+      if (form.sub === x.id) form.sub = null;
+      save();
+    }
+    if (!subsOf(form.scope).length) form.menu = 'sub';
+    drawMenu(); refreshTop();
+  }
+
   function defaultDate() {
     if (ui.view === 'hoy') return C.today();
     if (ui.view === 'calendario') return ui.calSel;
@@ -660,6 +677,12 @@
       h += menuItem('fsub', '', 'Ninguna', !form.sub);
       subsOf(form.scope).filter(function (x) { return !x.archived || x.id === form.sub; }).forEach(function (x) { h += menuItem('fsub', x.id, esc(x.name), x.id === form.sub); });
       h += menuItem('fsubnew', '', '＋ Nueva subcategoría', false);
+      if (subsOf(form.scope).length) h += menuItem('tkmenu', 'subedit', 'Editar o borrar subcategorías…', false);
+    } else if (m === 'subedit') {
+      subsOf(form.scope).forEach(function (x) {
+        h += '<div class="mi se"><span>' + esc(x.name) + (x.archived ? ' (archivada)' : '') + '</span><button class="mini-b" data-a="fsubren" data-id="' + esc(x.id) + '">Renombrar</button><button class="mini-b" data-a="fsubarch" data-id="' + esc(x.id) + '">' + (x.archived ? 'Reactivar' : 'Archivar') + '</button><button class="mini-b danger" data-a="fsubdel" data-id="' + esc(x.id) + '">Borrar</button></div>';
+      });
+      h += menuItem('tkmenu', 'sub', '‹ Volver', false);
     } else if (m === 'prio') {
       [[3, '••• Importante'], [2, '•• Menos importante'], [1, '• Poco importante'], [0, 'Sin prioridad']].forEach(function (o) { h += menuItem('fprio', String(o[0]), o[1], form.priority === o[0]); });
     } else if (m === 'more') {
@@ -1007,6 +1030,8 @@
         var ns = addSub(form.scope, prompt('Nombre de la nueva subcategoría'));
         if (ns) form.sub = ns.id;
         form.menu = null; drawMenu(); refreshTop(); break;
+      case 'fsubren': case 'fsubarch': case 'fsubdel':
+        formSubAction(a, id); break;
       case 'subman': openSubs(); break;
       case 'subadd': case 'subren': case 'subarch': case 'subdel': subAction(a, id); break;
       case 'fscope':
@@ -1075,7 +1100,9 @@
       if (tg === 'b' || tg === 'strong') out += '<b>' + inner + '</b>';
       else if (tg === 'i' || tg === 'em') out += '<i>' + inner + '</i>';
       else if (tg === 'u') out += '<u>' + inner + '</u>';
-      else if (tg === 'ul' || tg === 'ol' || tg === 'li') out += '<' + tg + '>' + inner + '</' + tg + '>';
+      else if (tg === 'ul') out += '<ul' + (c.classList.contains('cl') ? ' class="cl"' : '') + '>' + inner + '</ul>';
+      else if (tg === 'li') out += '<li' + (c.classList.contains('done') ? ' class="done"' : '') + '>' + inner + '</li>';
+      else if (tg === 'ol') out += '<ol>' + inner + '</ol>';
       else if (tg === 'h1' || tg === 'h2' || tg === 'h3') out += '<h3>' + inner + '</h3>';
       else if (tg === 'br') out += '<br>';
       else if (tg === 'div' || tg === 'p') out += '<div>' + inner + '</div>';
@@ -1111,7 +1138,8 @@
       '<button data-cmd="underline" aria-label="Subrayado"><u>U</u></button>' +
       '<button data-cmd="title" aria-label="Título">T</button>' +
       '<button data-cmd="insertUnorderedList" aria-label="Lista con viñetas">• Lista</button>' +
-      '<button data-cmd="insertOrderedList" aria-label="Lista numerada">1. Lista</button></div>' +
+      '<button data-cmd="insertOrderedList" aria-label="Lista numerada">1. Lista</button>' +
+      '<button data-cmd="check" aria-label="Lista de casillas">☐ Casillas</button></div>' +
       '<div id="f-notes" class="nrich" contenteditable="true" data-ph="Escribe aquí tus anotaciones…"></div>';
     document.body.appendChild(p);
     document.body.classList.add('noscroll');
@@ -1127,10 +1155,37 @@
       var cmd = b.getAttribute('data-cmd');
       ed.focus();
       if (cmd === 'title') document.execCommand('formatBlock', false, String(document.queryCommandValue('formatBlock')).toLowerCase() === 'h3' ? 'div' : 'h3');
+      else if (cmd === 'check') toggleChecklist();
       else document.execCommand(cmd, false, null);
       notesChanged();
     });
+    // Tocar el cuadrado de una casilla la marca / desmarca.
+    ed.addEventListener('click', function (e) {
+      var li = e.target.closest && e.target.closest('li');
+      if (!li || !li.parentNode.classList.contains('cl')) return;
+      if (e.clientX - li.getBoundingClientRect().left > 32) return;
+      li.classList.toggle('done'); notesChanged();
+    });
+    // Una casilla nueva (Enter) empieza sin marcar.
+    ed.addEventListener('input', function (e) {
+      if (e.inputType !== 'insertParagraph') return;
+      var sel = window.getSelection(), n = sel && sel.anchorNode, li = n && (n.nodeType === 1 ? n : n.parentNode).closest('li');
+      if (li) li.classList.remove('done');
+    });
     setTimeout(function () { ed.focus(); }, 120);
+  }
+  function toggleChecklist() {
+    function curUl() {
+      var sel = window.getSelection(), n = sel && sel.anchorNode;
+      if (!n) return null;
+      if (n.nodeType === 1) { var ch = n.childNodes[sel.anchorOffset] || n.childNodes[sel.anchorOffset - 1]; if (ch && ch.nodeType === 1) n = ch; }
+      else n = n.parentNode;
+      return (n.closest && n.closest('ul')) || (n.querySelector ? n.querySelector('ul') : null);
+    }
+    var ul = curUl();
+    if (!ul) { document.execCommand('insertUnorderedList'); ul = curUl(); if (ul) ul.classList.add('cl'); return; }
+    if (ul.classList.contains('cl')) { ul.classList.remove('cl'); [].forEach.call(ul.querySelectorAll('li.done'), function (l) { l.classList.remove('done'); }); }
+    else ul.classList.add('cl');
   }
   function closeNotes(silent) {
     var p = $('notespage'); if (!p) return;
