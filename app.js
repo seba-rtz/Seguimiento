@@ -513,7 +513,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 15</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 16</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -569,7 +569,7 @@
     s.innerHTML = '<div class="ov" data-a="close"></div><div class="panel">' + html + '</div>';
     s.classList.remove('hidden');
   }
-  function closeSheet() { $('sheet').classList.add('hidden'); $('sheet').innerHTML = ''; form = null; }
+  function closeSheet() { closeNotes(true); $('sheet').classList.add('hidden'); $('sheet').innerHTML = ''; form = null; }
 
   function chipsScope(sel) {
     return C.SCOPES.map(function (s) {
@@ -643,8 +643,9 @@
     var b = $('tk-datebtn');
     b.innerHTML = IC.cal + '<span>' + esc(parts.join(' · ')) + '</span><span class="ch">' + (form.dateOpen ? '▴' : '▾') + '</span>';
     b.classList.toggle('late', !!(form.date && form.date < C.today() && !form.recType));
-    $('tk-notesbtn').classList.toggle('has', !!(form.notes && form.notes.trim()));
-    $('tk-notesbtn').querySelector('.nt').textContent = form.notes && form.notes.trim() ? 'Notas (hay anotaciones)' : 'Notas';
+    var nb = $('tk-notesbtn'), nh = notesHtml(form.notes);
+    nb.classList.toggle('has', !!nh);
+    nb.innerHTML = IC.note + (nh ? '<div class="np"><div class="npl">Notas</div><div class="nrich npv">' + nh + '</div></div>' : '<span class="nt">Notas</span>');
   }
 
   function menuItem(a, v, label, on, cls, pre) {
@@ -724,11 +725,8 @@
       '<div class="tk-menu hidden" id="tk-menu"></div>' +
       '<button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
       '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
-      '<button class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes">' + IC.note + '<span class="nt">Notas</span></button>' +
-      '<div class="row" style="margin-top:12px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div>' +
-      '<div id="tk-notes" class="hidden"><div class="row" style="margin-bottom:10px"><button class="pill sq" data-a="tknotesback" aria-label="Volver">‹ Volver</button></div>' +
-      '<div class="note" style="margin:0 0 8px">Notas de la tarea. Solo se ven aquí; no aparecen en las listas.</div>' +
-      '<textarea id="f-notes" placeholder="Escribe aquí tus anotaciones…">' + esc(form.notes) + '</textarea></div>';
+      '<button class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes"></button>' +
+      '<div class="row" style="margin-top:12px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div>';
     openSheet(h);
     refreshTop();
     if (!t) setTimeout(function () { var el = $('f-title'); if (el) el.focus(); }, 250);
@@ -1028,11 +1026,8 @@
         var cm = (form.calMonth || (form.date || C.today()).slice(0, 7)).split('-'), cd = new Date(+cm[0], +cm[1] - 1 + (+el.dataset.n), 1);
         form.calMonth = C.fmt(cd).slice(0, 7); drawDatePanel(); break;
       case 'ftimeclear': form.time = null; form.end = null; drawDatePanel(); refreshTop(); break;
-      case 'tknotes':
-        $('tk-main').classList.add('hidden'); $('tk-notes').classList.remove('hidden'); $('sheet').querySelector('.panel').classList.add('tall');
-        setTimeout(function () { var x = $('f-notes'); if (x) x.focus(); }, 100); break;
-      case 'tknotesback':
-        flushNotes(); $('tk-notes').classList.add('hidden'); $('tk-main').classList.remove('hidden'); $('sheet').querySelector('.panel').classList.remove('tall'); refreshTop(); break;
+      case 'tknotes': openNotes(); break;
+      case 'nback': closeNotes(); refreshTop(); break;
       case 'fday':
         var k = form.days.indexOf(+v); if (k >= 0) form.days.splice(k, 1); else form.days.push(+v);
         el.classList.toggle('on'); refreshTop(); break;
@@ -1069,19 +1064,99 @@
       refreshTop();
     }
   });
-  // Notas de la tarea: en una tarea que ya existe se guardan solas al escribir.
+  /* ---------- Notas de la tarea (mini editor de texto) ---------- */
+  // Guardado: HTML limpio (solo negrita, cursiva, subrayado, título, listas). Las notas antiguas en texto plano se convierten.
+  function cleanNode(n) {
+    var out = '';
+    for (var c = n.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3) { out += esc(c.nodeValue); continue; }
+      if (c.nodeType !== 1) continue;
+      var tg = c.tagName.toLowerCase(), inner = cleanNode(c);
+      if (tg === 'b' || tg === 'strong') out += '<b>' + inner + '</b>';
+      else if (tg === 'i' || tg === 'em') out += '<i>' + inner + '</i>';
+      else if (tg === 'u') out += '<u>' + inner + '</u>';
+      else if (tg === 'ul' || tg === 'ol' || tg === 'li') out += '<' + tg + '>' + inner + '</' + tg + '>';
+      else if (tg === 'h1' || tg === 'h2' || tg === 'h3') out += '<h3>' + inner + '</h3>';
+      else if (tg === 'br') out += '<br>';
+      else if (tg === 'div' || tg === 'p') out += '<div>' + inner + '</div>';
+      else out += inner;
+    }
+    return out;
+  }
+  function notesHtml(raw) {
+    if (!raw || !String(raw).trim()) return '';
+    raw = String(raw);
+    if (!/<[a-z][\s\S]*>/i.test(raw)) return esc(raw).replace(/\n/g, '<br>');
+    var doc = new DOMParser().parseFromString('<body>' + raw + '</body>', 'text/html');
+    var h = cleanNode(doc.body);
+    var chk = document.createElement('div'); chk.innerHTML = h;
+    return chk.textContent.trim() ? h : '';
+  }
+
+  var notesVV = null;
+  function positionNotes() {
+    var p = $('notespage'); if (!p) return;
+    var vv = window.visualViewport;
+    p.style.top = (vv ? vv.offsetTop : 0) + 'px';
+    p.style.height = (vv ? vv.height : window.innerHeight) + 'px';
+    if (window.scrollY) window.scrollTo(0, 0);
+  }
+  function openNotes() {
+    if (!form || $('notespage')) return;
+    var p = document.createElement('div'); p.id = 'notespage';
+    p.innerHTML = '<div class="nhead"><button class="pill sq" data-a="nback">‹ Volver</button><span>Notas</span></div>' +
+      '<div class="ntool">' +
+      '<button data-cmd="bold" aria-label="Negrita"><b>B</b></button>' +
+      '<button data-cmd="italic" aria-label="Cursiva"><i>I</i></button>' +
+      '<button data-cmd="underline" aria-label="Subrayado"><u>U</u></button>' +
+      '<button data-cmd="title" aria-label="Título">T</button>' +
+      '<button data-cmd="insertUnorderedList" aria-label="Lista con viñetas">• Lista</button>' +
+      '<button data-cmd="insertOrderedList" aria-label="Lista numerada">1. Lista</button></div>' +
+      '<div id="f-notes" class="nrich" contenteditable="true" data-ph="Escribe aquí tus anotaciones…"></div>';
+    document.body.appendChild(p);
+    document.body.classList.add('noscroll');
+    var ed = $('f-notes');
+    ed.innerHTML = notesHtml(form.notes);
+    positionNotes();
+    notesVV = positionNotes;
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', notesVV); window.visualViewport.addEventListener('scroll', notesVV); }
+    window.addEventListener('scroll', notesVV);
+    p.addEventListener('pointerdown', function (e) {
+      var b = e.target.closest('[data-cmd]'); if (!b) return;
+      e.preventDefault();
+      var cmd = b.getAttribute('data-cmd');
+      ed.focus();
+      if (cmd === 'title') document.execCommand('formatBlock', false, String(document.queryCommandValue('formatBlock')).toLowerCase() === 'h3' ? 'div' : 'h3');
+      else document.execCommand(cmd, false, null);
+      notesChanged();
+    });
+    setTimeout(function () { ed.focus(); }, 120);
+  }
+  function closeNotes(silent) {
+    var p = $('notespage'); if (!p) return;
+    if (!silent) flushNotes();
+    if (notesVV) {
+      if (window.visualViewport) { window.visualViewport.removeEventListener('resize', notesVV); window.visualViewport.removeEventListener('scroll', notesVV); }
+      window.removeEventListener('scroll', notesVV); notesVV = null;
+    }
+    p.remove(); document.body.classList.remove('noscroll');
+  }
+  // En una tarea que ya existe, las notas se guardan solas al escribir.
   var notesT = null;
   function flushNotes() {
     clearTimeout(notesT); notesT = null;
     var x = $('f-notes'); if (!x || !form) return;
-    form.notes = x.value;
+    var h = notesHtml(x.innerHTML);
+    form.notes = h;
     var t = form.id ? findTask(form.id) : null;
-    if (t) { if (x.value.trim()) t.notes = x.value; else delete t.notes; save(); }
+    if (t) { if (h) t.notes = h; else delete t.notes; save(); }
+  }
+  function notesChanged() {
+    var x = $('f-notes'); if (!x || !form) return;
+    clearTimeout(notesT); notesT = setTimeout(flushNotes, 600);
   }
   document.addEventListener('input', function (e) {
-    if (e.target.id !== 'f-notes' || !form) return;
-    form.notes = e.target.value;
-    if (form.id) { clearTimeout(notesT); notesT = setTimeout(flushNotes, 600); }
+    if (e.target.id === 'f-notes') notesChanged();
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target.id === 'f-title' && form) { e.preventDefault(); saveTask(); }
