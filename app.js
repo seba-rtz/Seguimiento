@@ -264,7 +264,6 @@
   /* ---------- Vistas ---------- */
   function weekGrid() {
     var monday = C.addDays(C.mondayOf(C.today()), ui.weekOff * 7), td = C.today();
-    var tot = C.weekTotals(D, monday);
     var h = '<div class="card"><div class="wkhead"><button data-a="wk" data-n="-1">‹</button><span>' +
       (ui.weekOff === 0 ? 'Esta semana' : shortDate(monday) + ' – ' + shortDate(C.addDays(monday, 6))) +
       '</span><button data-a="wk" data-n="1">›</button></div><div class="grid"><span></span>';
@@ -272,7 +271,7 @@
       var day = C.addDays(monday, i);
       h += '<span class="h ' + (day === td ? 'today' : '') + '">' + DL[i] + '<br>' + C.parse(day).getDate() + '</span>';
     }
-    h += '<span></span>';
+    h += '<span class="h rkh" title="Días seguidos cumplidos">Racha</span>';
     C.SCOPES.forEach(function (s) {
       h += '<span class="name" style="--c:' + s.color + '"><i></i>' + s.name + '</span>';
       for (var j = 0; j < 7; j++) {
@@ -280,7 +279,8 @@
         h += '<button class="cell ' + (on ? 'on' : '') + (dd === td ? ' today' : '') + '" style="--c:' + s.color +
           '" data-a="cell" data-date="' + dd + '" data-scope="' + s.id + '" aria-label="' + s.name + ' ' + dd + '">' + (on ? '✓' : '') + '</button>';
       }
-      h += '<span class="tot">' + tot[s.id] + '/7</span>';
+      var rk = C.streak(D, s.id, td);
+      h += '<span class="tot rk' + (rk ? '' : ' z') + '" style="--c:' + s.color + '" title="Racha: ' + rk + ' días seguidos">' + rk + '</span>';
     });
     return h + '</div></div>';
   }
@@ -541,7 +541,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 19</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 20</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
