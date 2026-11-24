@@ -128,8 +128,8 @@ async function main() {
 
   /* Registro de cumplimiento de la semana */
   const monday = Core.mondayOf(today), tot = Core.weekTotals(D, monday);
-  const cw = Math.floor((W - 32 - 62 - 28 - 32) / 7);
-  const gridRow = function (label, lcol, cells, total) {
+  const cw = Math.floor((W - 32 - 62 - 34 - 32) / 7);
+  const gridRow = function (label, lcol, cells, total, tcol) {
     const r = w.addStack();
     r.centerAlignContent();
     r.spacing = 4;
@@ -145,12 +145,12 @@ async function main() {
       if (c.t) { s.addSpacer(); txt(s, c.t, 11, c.tc); s.addSpacer(); }
     });
     const q = r.addStack();
-    q.size = new Size(28, 14);
+    q.size = new Size(34, 14);
     q.addSpacer();
-    txt(q, total, 11, GREY);
+    txt(q, total, 12, tcol || GREY);
   };
   const letters = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-  gridRow('Esta semana', GREY, letters.map(function (l, i) { return { t: l, tc: Core.addDays(monday, i) === today ? ORANGE : GREY }; }), '');
+  gridRow('Esta semana', GREY, letters.map(function (l, i) { return { t: l, tc: Core.addDays(monday, i) === today ? ORANGE : GREY }; }), 'Racha');
   w.addSpacer(3);
   Core.SCOPES.forEach(function (s) {
     const cells = [];
@@ -158,7 +158,8 @@ async function main() {
       const day = Core.addDays(monday, i), on = !!(D.log[day] && D.log[day][s.id]);
       cells.push({ fill: on ? new Color(s.color) : OFF, border: day === today });
     }
-    gridRow(s.name, new Color(s.color), cells, tot[s.id] + '/7');
+    const rk = Core.streak ? Core.streak(D, s.id, today) : 0;
+    gridRow(s.name, new Color(s.color), cells, String(rk), rk ? new Color(s.color) : GREY);
     w.addSpacer(3);
   });
   w.addSpacer();
