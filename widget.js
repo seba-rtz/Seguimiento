@@ -128,29 +128,34 @@ async function main() {
 
   /* Registro de cumplimiento de la semana */
   const monday = Core.mondayOf(today), tot = Core.weekTotals(D, monday);
-  const cw = Math.floor((W - 32 - 62 - 34 - 32) / 7);
+  const LW = 64, RW = 22;
+  const cw = Math.floor((W - 32 - LW - RW - 24 - 8) / 7);
   const gridRow = function (label, lcol, cells, total, tcol) {
     const r = w.addStack();
     r.centerAlignContent();
     r.spacing = 4;
     const l = r.addStack();
-    l.size = new Size(62, 14);
-    txt(l, label, 11, lcol);
+    l.size = new Size(LW, 16);
+    l.centerAlignContent();
+    txt(l, label, 12, lcol);
+    r.addSpacer();
     cells.forEach(function (c) {
       const s = r.addStack();
-      s.size = new Size(cw, 14);
+      s.size = new Size(cw, 16);
       s.centerAlignContent();
-      if (c.fill) { s.backgroundColor = c.fill; s.cornerRadius = 3; s.size = new Size(cw, 13); }
-      if (c.border) { s.borderColor = ORANGE; s.borderWidth = 1.5; }
+      if (c.fill) { s.backgroundColor = c.fill; s.cornerRadius = 4; }
+      if (c.border) { s.borderColor = ORANGE; s.borderWidth = 1.5; s.cornerRadius = 4; }
       if (c.t) { s.addSpacer(); txt(s, c.t, 11, c.tc); s.addSpacer(); }
     });
+    r.addSpacer();
     const q = r.addStack();
-    q.size = new Size(34, 14);
+    q.size = new Size(RW, 16);
+    q.centerAlignContent();
     q.addSpacer();
-    txt(q, total, 12, tcol || GREY);
+    txt(q, total, 13, tcol || GREY, true);
   };
   const letters = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-  gridRow('Esta semana', GREY, letters.map(function (l, i) { return { t: l, tc: Core.addDays(monday, i) === today ? ORANGE : GREY }; }), 'Racha');
+  gridRow('', GREY, letters.map(function (l, i) { return { t: l, tc: Core.addDays(monday, i) === today ? ORANGE : GREY }; }), '');
   w.addSpacer(3);
   Core.SCOPES.forEach(function (s) {
     const cells = [];
