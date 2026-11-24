@@ -185,6 +185,30 @@
   function shortDate(s) { var d = C.parse(s); return d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3); }
   function findTask(id) { return D.tasks.filter(function (t) { return t.id === id; })[0]; }
 
+  /* ---------- Subcategorías (dentro de cada ámbito; las crea el usuario; D.meta.subs) ---------- */
+  function subsOf(scope) { return (D.meta.subs || []).filter(function (x) { return x.scope === scope; }); }
+  function subById(id) { return id ? (D.meta.subs || []).filter(function (x) { return x.id === id; })[0] || null : null; }
+  function addSub(scope, name) {
+    name = String(name || '').trim().slice(0, 40);
+    if (!name) return null;
+    var ex = subsOf(scope).filter(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })[0];
+    if (ex) { if (ex.archived) { ex.archived = false; save(); } return ex; }
+    D.meta.subs = D.meta.subs || [];
+    var n = { id: C.uid(), scope: scope, name: name };
+    D.meta.subs.push(n); save();
+    return n;
+  }
+  function groupBySub(items, scope) {
+    var out = [];
+    subsOf(scope).forEach(function (x) {
+      var arr = items.filter(function (i) { return i.t.sub === x.id; });
+      if (arr.length) out.push({ sub: x, items: arr });
+    });
+    var rest = items.filter(function (i) { return !subById(i.t.sub); });
+    if (rest.length) out.push({ sub: null, items: rest });
+    return out;
+  }
+
   /* ---------- Filas ---------- */
   function recLabel(r) {
     if (!r) return '';
@@ -196,14 +220,14 @@
     return 'Cada ' + r.n + ' ' + u;
   }
 
-  function taskRow(t, d, showDate, inbox) {
+  function taskRow(t, d, showDate, inbox, noSub) {
     var sc = C.scopeById(t.scope), st = C.getState(t, d || t.date);
     var dots = '';
     for (var i = 0; i < (t.priority || 0); i++) dots += '<i></i>';
     var meta = [];
     if (showDate && d) meta.push(shortDate(d));
     if (t.time) meta.push(t.end ? t.time + '–' + t.end : t.time);
-    if (!inbox) meta.push(sc.name);
+    if (!inbox) { var sb = noSub ? null : subById(t.sub); meta.push(sc.name + (sb ? ' › ' + sb.name : '')); }
     if (t.rec) meta.push('↻ ' + recLabel(t.rec));
     var mark = st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '';
     return '<div class="task ' + esc(st || '') + '" style="--c:' + sc.color + '" data-group="' + esc(d || '') + '">' +
@@ -274,6 +298,16 @@
     return h;
   }
 
+  // Agrupa por subcategoría (cada grupo en su caja, para que arrastrar no mezcle grupos). Sin subcategorías: lista normal.
+  function subGroups(items, scope, rowFn, asSec) {
+    var gr = groupBySub(items, scope);
+    if (gr.length === 1 && !gr[0].sub) return '<div class="sg">' + items.map(rowFn).join('') + '</div>';
+    return gr.map(function (g) {
+      var name = esc(g.sub ? g.sub.name : 'Sin subcategoría');
+      return (asSec ? '<div class="sec">' + name + '</div>' : '<div class="subh">' + name + '</div>') + '<div class="sg">' + g.items.map(rowFn).join('') + '</div>';
+    }).join('');
+  }
+
   function viewBuzon() {
     var items = D.tasks.filter(function (t) { return !t.deleted && !t.date && !C.getState(t); })
       .map(function (t) { return { t: t, d: null }; });
@@ -287,7 +321,7 @@
       var closed = ui.inbClosed[s.id];
       h += '<div class="grp" style="--c:' + s.color + '"><div class="gh" data-a="grp" data-s="' + s.id + '"><i class="gdot"></i><b>' + esc(s.name) + '</b><span class="gn">' + arr.length +
         '</span><span class="gch' + (closed ? ' c' : '') + '">⌄</span></div>' +
-        (closed ? '' : '<div class="gbody">' + arr.map(function (x) { return taskRow(x.t, null, false, true); }).join('') + '</div>') + '</div>';
+        (closed ? '' : '<div class="gbody">' + subGroups(arr, s.id, function (x) { return taskRow(x.t, null, false, true); }, false) + '</div>') + '</div>';
     });
     return h;
   }
@@ -324,8 +358,10 @@
       h += '<button class="chip sc ' + (s.id === ui.scope ? 'on' : '') + '" style="--c:' + s.color + '" data-a="scope" data-scope="' + s.id + '"><span class="sw"></span>' + s.name + '</button>';
     });
     h += '</div>';
+    h += '<div class="row" style="margin:0 2px 6px"><button class="btn" data-a="subman">Subcategorías' + (subsOf(ui.scope).length ? ' (' + subsOf(ui.scope).length + ')' : '') + '</button></div>';
     var items = allPending(ui.scope);
-    return h + list(items, true, 'No hay tareas pendientes en este ámbito.');
+    if (!items.length) return h + '<div class="empty">No hay tareas pendientes en este ámbito.</div>';
+    return h + subGroups(items, ui.scope, function (x) { return taskRow(x.t, x.d, true, false, true); }, true);
   }
 
   function hasTasks(d) { return D.tasks.some(function (t) { return !t.deleted && C.occursOn(t, d); }); }
@@ -477,7 +513,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 12</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 13</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -541,6 +577,41 @@
     }).join('');
   }
 
+  function chipsSub() {
+    var cur = form.sub || '';
+    return '<button class="chip ' + (!cur ? 'on' : '') + '" data-a="fsub" data-v="">Ninguna</button>' +
+      subsOf(form.scope).filter(function (x) { return !x.archived || x.id === cur; }).map(function (x) {
+        return '<button class="chip ' + (x.id === cur ? 'on' : '') + '" data-a="fsub" data-v="' + esc(x.id) + '">' + esc(x.name) + '</button>';
+      }).join('') + '<button class="chip" data-a="fsubnew">＋ Nueva</button>';
+  }
+  function openSubs() {
+    var sc = C.scopeById(ui.scope), subs = subsOf(ui.scope);
+    var h = '<h2>Subcategorías · ' + esc(sc.name) + '</h2>' +
+      '<div class="note" style="margin:0 0 10px">Archivar una subcategoría la oculta al crear tareas nuevas, pero conserva las tareas que ya la tienen. Borrarla no borra sus tareas: pasan a «Sin subcategoría».</div>';
+    if (!subs.length) h += '<div class="empty" style="padding:14px 10px">Aún no hay subcategorías en este ámbito.</div>';
+    subs.forEach(function (x) {
+      var n = D.tasks.filter(function (t) { return !t.deleted && t.sub === x.id; }).length;
+      h += '<div class="card" style="border-left:5px solid ' + sc.color + '"><div>' + esc(x.name) + (x.archived ? ' (archivada)' : '') + '</div><div class="note" style="margin:2px 0 10px">' + n + ' tareas</div>' +
+        '<div class="row"><button class="btn" data-a="subren" data-id="' + esc(x.id) + '">Renombrar</button><button class="btn" data-a="subarch" data-id="' + esc(x.id) + '">' + (x.archived ? 'Reactivar' : 'Archivar') +
+        '</button><button class="btn danger" data-a="subdel" data-id="' + esc(x.id) + '">Borrar</button></div></div>';
+    });
+    h += '<div class="actions"><button class="btn primary" data-a="subadd">＋ Nueva subcategoría</button><button class="btn" data-a="close">Cerrar</button></div>';
+    openSheet(h);
+  }
+  function subAction(a, id) {
+    var x = subById(id);
+    if (a === 'subadd') { addSub(ui.scope, prompt('Nombre de la nueva subcategoría')); }
+    else if (a === 'subren' && x) { var nn = String(prompt('Nuevo nombre', x.name) || '').trim().slice(0, 40); if (nn) { x.name = nn; save(); } }
+    else if (a === 'subarch' && x) { x.archived = !x.archived; save(); }
+    else if (a === 'subdel' && x) {
+      var n = D.tasks.filter(function (t) { return t.sub === x.id; }).length;
+      if (!confirm('¿Borrar la subcategoría «' + x.name + '»? ' + (n ? 'Sus ' + n + ' tareas no se borran: pasan a «Sin subcategoría».' : ''))) return;
+      D.tasks.forEach(function (t) { if (t.sub === x.id) t.sub = null; });
+      D.meta.subs = D.meta.subs.filter(function (y) { return y.id !== x.id; }); save();
+    }
+    render(); openSubs();
+  }
+
   function defaultDate() {
     if (ui.view === 'hoy') return C.today();
     if (ui.view === 'calendario') return ui.calSel;
@@ -552,6 +623,7 @@
     form = {
       id: id, ctx: ctxDate || (t && t.date) || null,
       scope: t ? t.scope : (ui.view === 'ambito' ? ui.scope : ui.lastScope),
+      sub: t && subById(t.sub) ? t.sub : '',
       priority: t ? (t.priority || 0) : 0,
       recType: t && t.rec ? t.rec.type : '',
       days: t && t.rec && t.rec.days ? t.rec.days.slice() : [],
@@ -561,6 +633,7 @@
     var h = '<h2>' + (t ? 'Editar tarea' : 'Nueva tarea') + '</h2>' +
       '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
       '<div class="lbl">Ámbito</div><div class="chips" id="f-scope">' + chipsScope(form.scope) + '</div>' +
+      '<div class="lbl">Subcategoría (opcional)</div><div class="chips" id="f-sub">' + chipsSub() + '</div>' +
       '<div class="lbl">Prioridad</div><div class="chips" id="f-prio">' +
       ['Sin prioridad', '•', '••', '•••'].map(function (l, i) {
         return '<button class="chip ' + (i === form.priority ? 'on' : '') + '" data-a="fprio" data-v="' + i + '">' + l + '</button>';
@@ -616,7 +689,7 @@
     var t = form.id ? findTask(form.id) : null;
     if (!t) { t = { id: C.uid(), created: Date.now() }; D.tasks.push(t); }
     var wasRec = !!t.rec;
-    t.title = title; t.scope = form.scope; t.priority = form.priority; t.date = date; t.time = time; t.end = end; t.rec = rec;
+    t.title = title; t.scope = form.scope; t.sub = (subById(form.sub) && subById(form.sub).scope === form.scope) ? form.sub : null; t.priority = form.priority; t.date = date; t.time = time; t.end = end; t.rec = rec;
     // Al cambiar entre repetitiva y única, los estados anteriores ya no valen.
     if (wasRec !== !!rec) { t.states = {}; t.state = null; t.ex = []; }
     ui.lastScope = form.scope;
@@ -851,8 +924,16 @@
         if (uv && !/^https:\/\//i.test(uv)) { alert('El enlace debe empezar por https://'); break; }
         D.meta.uniUrl = uv; save(); G.fail = 0; ensureG(true); render(); break;
       /* formulario de tarea */
+      case 'fsub': form.sub = v; $('f-sub').innerHTML = chipsSub(); break;
+      case 'fsubnew':
+        var ns = addSub(form.scope, prompt('Nombre de la nueva subcategoría'));
+        if (ns) { form.sub = ns.id; $('f-sub').innerHTML = chipsSub(); } break;
+      case 'subman': openSubs(); break;
+      case 'subadd': case 'subren': case 'subarch': case 'subdel': subAction(a, id); break;
       case 'fscope':
         form.scope = v;
+        if (form.sub && (subById(form.sub) || {}).scope !== v) form.sub = '';
+        $('f-sub').innerHTML = chipsSub();
         [].forEach.call($('f-scope').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); break;
       case 'fprio':
         form.priority = +v;
