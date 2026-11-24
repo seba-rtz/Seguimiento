@@ -373,7 +373,7 @@
     var gAll = gOn(sel).filter(function (ev) { return ev.allDay; });
     var gTimed = gOn(sel).filter(function (ev) { return !ev.allDay; });
     var evs = items.filter(function (x) { return x.t.time; }).map(function (x) {
-      var s = mins(x.t.time), e = x.t.end ? mins(x.t.end) : s + 60;
+      var s = mins(x.t.time), e = x.t.end ? mins(x.t.end) : s + 30;
       if (e <= s) e = s + 30;
       return { x: x, s: s, e: Math.min(e, 1440) };
     });
@@ -418,7 +418,7 @@
       }
       var t = ev.x.t, sc = C.scopeById(t.scope), st = C.getState(t, sel);
       var top = ev.s / 60 * HH, ht = Math.max((ev.e - ev.s) / 60 * HH - 2, 28);
-      h += '<div class="ev ' + esc(st || '') + '" style="--c:' + sc.color + ';--fg:' + fgFor(sc.color) + ';top:' + top + 'px;height:' + ht + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
+      h += '<div class="ev ' + esc(st || '') + (ev.e - ev.s <= 30 ? ' short' : '') + '" data-tl="' + esc(t.id) + '" style="--c:' + sc.color + ';--fg:' + fgFor(sc.color) + ';top:' + top + 'px;height:' + ht + 'px;left:calc(54px + (100% - 58px) * ' + ev.c + ' / ' + ev.n +
         ');width:calc((100% - 58px) / ' + ev.n + ' - 3px)"><button class="evchk" data-a="toggle" data-id="' + esc(t.id) + '" data-date="' + sel + '" aria-label="Completar">' +
         (st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '') + '</button><div class="evb" data-a="edit" data-id="' + esc(t.id) + '" data-date="' + sel + '"><div class="evt">' + esc(t.title) +
         '</div><div class="evm">' + esc(t.time + (t.end ? '–' + t.end : '')) + '</div></div></div>';
@@ -477,7 +477,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 11</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 12</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -694,6 +694,13 @@
     if (e.type === 'mousedown' && e.button !== 0) return;
     if (drag || !$('sheet').classList.contains('hidden')) return;
     var row = e.target.closest ? e.target.closest('.task') : null;
+    var blk = !row && e.target.closest ? e.target.closest('.ev[data-tl]') : null;
+    if (blk) {
+      if (e.target.closest('.evchk')) return;
+      var pb = pt(e); press = pb;
+      pressT = setTimeout(function () { pressT = null; startTlDrag(blk, pb); }, 350);
+      return;
+    }
     if (!row || e.target.closest('.chk')) return;
     var p = pt(e); press = p;
     pressT = setTimeout(function () { pressT = null; startDrag(row, p); }, 350);
@@ -703,7 +710,39 @@
     row.classList.add('drag'); document.body.classList.add('dragging');
     if (navigator.vibrate) navigator.vibrate(15);
   }
+  /* Mover una tarea en la vista «Día por horas»: mantener pulsada y arrastrar; cambia la hora (no la duración) en tramos de 15 min */
+  function startTlDrag(blk, p) {
+    var t = findTask(blk.dataset.tl);
+    if (!t || !t.time) return;
+    var s0 = mins(t.time), dur = t.end ? Math.max(15, mins(t.end) - s0) : 30;
+    drag = { tl: true, blk: blk, task: t, dur: dur, hasEnd: !!t.end, off: p.y - blk.getBoundingClientRect().top, s0: s0, s: s0 };
+    blk.classList.add('drag'); document.body.classList.add('dragging');
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
+  function moveTlDrag(p) {
+    var tr = $('tl').getBoundingClientRect();
+    var m = Math.round((p.y - drag.off - tr.top) / HH * 60 / 15) * 15;
+    m = Math.min(m, (drag.hasEnd ? 1439 : 1440) - drag.dur);
+    m = Math.max(0, Math.floor(m / 15) * 15);
+    drag.s = m;
+    drag.blk.style.top = (m / 60 * HH) + 'px';
+    var lab = drag.blk.querySelector('.evm');
+    if (lab) lab.textContent = hm(m) + (drag.hasEnd ? '–' + hm(m + drag.dur) : '');
+    if (p.y > window.innerHeight - 130) window.scrollBy(0, 10); else if (p.y < 110) window.scrollBy(0, -10);
+  }
+  function endTlDrag() {
+    var d = drag;
+    drag = null; noClickUntil = Date.now() + 400;
+    d.blk.classList.remove('drag'); document.body.classList.remove('dragging');
+    if (d.s !== d.s0) {
+      d.task.time = hm(d.s);
+      if (d.hasEnd) d.task.end = hm(d.s + d.dur);
+      save();
+    }
+    render();
+  }
   function moveDrag(p) {
+    if (drag.tl) { moveTlDrag(p); return; }
     var row = drag.row;
     var sibs = [].filter.call(drag.box.querySelectorAll('.task'), function (r) { return r !== row && r.dataset.group === drag.group; });
     var target = null;
@@ -716,6 +755,7 @@
     if (p.y > window.innerHeight - 130) window.scrollBy(0, 10); else if (p.y < 110) window.scrollBy(0, -10);
   }
   function endDrag() {
+    if (drag.tl) { endTlDrag(); return; }
     var rows = [].filter.call(drag.box.querySelectorAll('.task'), function (r) { return r.dataset.group === drag.group; });
     var tasks = rows.map(function (r) { return findTask(r.querySelector('[data-id]').dataset.id); });
     tasks.forEach(function (t, k) { t.order = k + 1; }); // la lista queda fijada como se ve
@@ -738,7 +778,7 @@
   document.addEventListener('mouseup', pressEnd);
 
   document.addEventListener('click', function (e) {
-    if (Date.now() < noClickUntil && e.target.closest('.task')) return;
+    if (Date.now() < noClickUntil && e.target.closest('.task, .ev')) return;
     var el = e.target.closest('[data-a]');
     if (!el) return;
     var a = el.dataset.a, id = el.dataset.id, d = el.dataset.date, v = el.dataset.v, t;
