@@ -43,6 +43,37 @@
     return y + '-Q' + (k + 1);
   }
 
+  /* ---------- Trimestres y objetivos con fechas ---------- */
+  function quarterStart(q) { return q.slice(0, 4) + '-' + pad((+q.slice(6) - 1) * 3 + 1) + '-01'; }
+  function quarterEnd(q) { return addDays(quarterStart(shiftQuarter(q, 1)), -1); }
+  // Objetivos antiguos (solo con trimestre): su inicio y su fin son los del trimestre.
+  function goalStart(g) { return g.start || (g.quarter ? quarterStart(g.quarter) : ''); }
+  function goalEnd(g) { return g.end != null ? g.end : (g.quarter ? quarterEnd(g.quarter) : ''); }
+  function firstMarkDay(data) {
+    var f = '';
+    Object.keys(data.log).forEach(function (d) {
+      var day = data.log[d];
+      if (!day || (f && d >= f)) return;
+      for (var k in day) if (day[k]) { f = d; return; }
+    });
+    return f;
+  }
+  // Cumplimiento por ámbito en un trimestre: días marcados entre días transcurridos.
+  // Cuenta desde el primer día con registro (si cae dentro del trimestre) hasta hoy o el fin del trimestre.
+  function quarterStats(data, q, td) {
+    var qs = quarterStart(q), qe = quarterEnd(q), fm = firstMarkDay(data);
+    var from = (fm && fm > qs) ? fm : qs, to = td < qe ? td : qe;
+    var res = { q: q, qs: qs, qe: qe, from: from, to: to, days: 0, scopes: {} };
+    SCOPES.forEach(function (s) { res.scopes[s.id] = 0; });
+    if (!fm || from > to) return res;
+    res.days = diffDays(from, to) + 1;
+    for (var i = 0; i < res.days; i++) {
+      var day = data.log[addDays(from, i)];
+      if (day) SCOPES.forEach(function (s) { if (day[s.id]) res.scopes[s.id]++; });
+    }
+    return res;
+  }
+
   /* ---------- Recurrencia ---------- */
   function occursOn(t, d) {
     if (!t.date) return false;
@@ -165,7 +196,8 @@
     SCOPES: SCOPES, PRIORITIES: PRIORITIES, GOAL_STATES: GOAL_STATES, KEY: KEY,
     scopeById: scopeById, pad: pad, fmt: fmt, parse: parse, today: today, addDays: addDays,
     diffDays: diffDays, weekday: weekday, dim: dim, mondayOf: mondayOf, quarterOf: quarterOf,
-    shiftQuarter: shiftQuarter, occursOn: occursOn, getState: getState, setState: setState,
+    shiftQuarter: shiftQuarter, quarterStart: quarterStart, quarterEnd: quarterEnd, goalStart: goalStart, goalEnd: goalEnd,
+    quarterStats: quarterStats, occursOn: occursOn, getState: getState, setState: setState,
     nextOccurrence: nextOccurrence, sortItems: sortItems, cmp: cmp, orderOf: orderOf, tasksOn: tasksOn, emptyData: emptyData,
     uid: uid, validate: validate, load: load, save: save, weekTotals: weekTotals
   };
