@@ -29,19 +29,18 @@
     G.events.forEach(function (ev) {
       if (seen[ev.calName]) return; seen[ev.calName] = 1;
       rows += '<label style="display:flex;align-items:center;justify-content:space-between;padding:5px 0"><span>' + esc(ev.calName) +
-        '</span><input type="color" data-gcal="' + esc(ev.calName) + '" value="' + gBase(ev) + '" style="width:48px;height:32px;padding:0;border:0;background:none"></label>';
+        '</span><input type="color" data-gcal="' + esc(ev.calName) + '" value="' + esc(gBase(ev)) + '" style="width:48px;height:32px;padding:0;border:0;background:none"></label>';
     });
     return rows ? '<div class="note" style="margin:0 0 4px">Color de cada calendario (se muestra apagado):</div>' + rows + '<div style="height:8px"></div>' : '';
   }
   var G = { events: [], from: '', to: '', at: 0, loading: false, fail: 0, err: '', by: {} };
   try { var gc = JSON.parse(localStorage.getItem(GK)); if (gc && gc.events) { G.events = gc.events; G.from = gc.from; G.to = gc.to; G.at = gc.at; } } catch (e) {}
-  function ldate(dt) { return dt.getFullYear() + '-' + C.pad(dt.getMonth() + 1) + '-' + C.pad(dt.getDate()); }
   function indexG() {
     G.by = {};
     G.events.forEach(function (ev) {
       var a, b;
       if (ev.allDay) { a = ev.start; b = C.addDays(ev.end, -1); if (b < a) b = a; }
-      else { var s = new Date(ev.start), e = new Date(ev.end); a = ldate(s); b = ldate(new Date(Math.max(s.getTime(), e.getTime() - 1))); }
+      else { var s = new Date(ev.start), e = new Date(ev.end); a = C.fmt(s); b = C.fmt(new Date(Math.max(s.getTime(), e.getTime() - 1))); }
       var d = a, n = 0;
       while (d <= b && n < 31) { (G.by[d] = G.by[d] || []).push(ev); d = C.addDays(d, 1); n++; }
     });
@@ -157,14 +156,13 @@
       G.events = []; G.at = 0; indexG(); render();
     };
     if (!D.meta.avisosOn) return done();
-    var fin = function () { done(); };
     Sync.rest('/rest/v1/avisos?enviado=eq.false', { method: 'DELETE', prefer: 'return=minimal' }).then(function () {
       return pushSupported() ? Promise.race([navigator.serviceWorker.ready, new Promise(function (r) { setTimeout(r, 3000); })]).then(function (reg) { return reg && reg.pushManager.getSubscription(); }) : null;
     }).then(function (sub) {
       if (!sub) return;
       var ep = sub.endpoint; sub.unsubscribe();
       return Sync.rest('/rest/v1/suscripciones?endpoint=eq.' + encodeURIComponent(ep), { method: 'DELETE', prefer: 'return=minimal' });
-    }).then(fin, fin);
+    }).then(done, done);
   }
   function testAviso() {
     Sync.rest('/rest/v1/avisos', { method: 'POST', prefer: 'return=minimal', body: [{ enviar_en: new Date(Date.now() - 1000).toISOString(), titulo: 'Aviso de prueba', cuerpo: 'Si lees esto, los avisos funcionan.' }] })
@@ -182,7 +180,6 @@
   }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
   function longDate(s) { var d = C.parse(s); return DIAS[C.weekday(d)] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
-  function shortDate(s) { var d = C.parse(s); return d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3); }
   function findTask(id) { return D.tasks.filter(function (t) { return t.id === id; })[0]; }
 
   /* ---------- Subcategorías (dentro de cada ámbito; las crea el usuario; D.meta.subs) ---------- */
@@ -216,8 +213,7 @@
     if (r.type === 'weekly') return 'Cada semana' + (r.days && r.days.length ? ' (' + r.days.map(function (i) { return DL[i]; }).join(' ') + ')' : '');
     if (r.type === 'monthly') return 'Cada mes';
     if (r.type === 'yearly') return 'Cada año';
-    var u = { d: 'días', w: 'semanas', m: 'meses' }[r.unit];
-    return 'Cada ' + r.n + ' ' + u;
+    return 'Cada ' + (+r.n || 1) + ' ' + ({ d: 'días', w: 'semanas', m: 'meses' }[r.unit] || 'días');
   }
 
   function taskRow(t, d, showDate, inbox, noSub) {
@@ -264,9 +260,9 @@
   /* ---------- Vistas ---------- */
   function weekGrid() {
     var monday = C.addDays(C.mondayOf(C.today()), ui.weekOff * 7), td = C.today();
-    var h = '<div class="card"><div class="wkhead"><button data-a="wk" data-n="-1">‹</button><span>' +
+    var h = '<div class="card"><div class="wkhead"><button data-a="wk" data-n="-1" aria-label="Semana anterior">‹</button><span>' +
       (ui.weekOff === 0 ? 'Esta semana' : shortDate(monday) + ' – ' + shortDate(C.addDays(monday, 6))) +
-      '</span><button data-a="wk" data-n="1">›</button></div><div class="grid"><span></span>';
+      '</span><button data-a="wk" data-n="1" aria-label="Semana siguiente">›</button></div><div class="grid"><span></span>';
     for (var i = 0; i < 7; i++) {
       var day = C.addDays(monday, i);
       h += '<span class="h ' + (day === td ? 'today' : '') + '">' + DL[i] + '<br>' + C.parse(day).getDate() + '</span>';
@@ -280,7 +276,7 @@
           '" data-a="cell" data-date="' + dd + '" data-scope="' + s.id + '" aria-label="' + s.name + ' ' + dd + '">' + (on ? '✓' : '') + '</button>';
       }
       var rk = C.streak(D, s.id, td);
-      h += '<span class="tot rk' + (rk ? '' : ' z') + '" style="--c:' + s.color + '" title="Racha: ' + rk + ' días seguidos">' + rk + '</span>';
+      h += '<span class="tot' + (rk ? '' : ' z') + '" style="--c:' + s.color + '" title="Racha: ' + rk + ' días seguidos">' + rk + '</span>';
     });
     return h + '</div></div>';
   }
@@ -377,15 +373,15 @@
       var first = ui.calMonth + '-01', p = first.split('-');
       var start = C.mondayOf(first), cells = '';
       for (var i = 0; i < 42; i++) { var d = C.addDays(start, i); if (i >= 35 && d.slice(0, 7) !== ui.calMonth) break; cells += dayCell(d, ui.calMonth); }
-      h += '<div class="calhead"><button class="ar" data-a="calmove" data-n="-1">‹</button><button class="name" data-a="caltoggle">' +
-        MESES[+p[1] - 1] + ' ' + p[0] + ' ▴</button><button class="ar" data-a="calmove" data-n="1">›</button></div>' +
+      h += '<div class="calhead"><button class="ar" data-a="calmove" data-n="-1" aria-label="Anterior">‹</button><button class="name" data-a="caltoggle">' +
+        MESES[+p[1] - 1] + ' ' + p[0] + ' ▴</button><button class="ar" data-a="calmove" data-n="1" aria-label="Siguiente">›</button></div>' +
         '<div class="calgrid">' + dh + cells + '</div>';
     } else {
       var mon = C.mondayOf(sel), cs = '';
       for (var j = 0; j < 7; j++) cs += dayCell(C.addDays(mon, j), null);
       var sd = C.parse(sel);
-      h += '<div class="calhead"><button class="ar" data-a="calmove" data-n="-1">‹</button><button class="name" data-a="caltoggle">' +
-        MESES[sd.getMonth()] + ' ' + sd.getFullYear() + ' ▾</button><button class="ar" data-a="calmove" data-n="1">›</button></div>' +
+      h += '<div class="calhead"><button class="ar" data-a="calmove" data-n="-1" aria-label="Anterior">‹</button><button class="name" data-a="caltoggle">' +
+        MESES[sd.getMonth()] + ' ' + sd.getFullYear() + ' ▾</button><button class="ar" data-a="calmove" data-n="1" aria-label="Siguiente">›</button></div>' +
         '<div class="calgrid">' + dh + cs + '</div>';
     }
     setTop('Calendario', longDate(sel));
@@ -490,8 +486,8 @@
   }
   function quarterCard(td) {
     var q = ui.quarter, st = C.quarterStats(D, q, td);
-    var h = '<div class="card"><div class="calhead" style="margin:0 0 6px"><button class="ar" data-a="qmove" data-n="-1">‹</button><span class="name">' + qName(q) +
-      (q === C.quarterOf(td) ? ' (actual)' : '') + '</span><button class="ar" data-a="qmove" data-n="1">›</button></div>';
+    var h = '<div class="card"><div class="calhead" style="margin:0 0 6px"><button class="ar" data-a="qmove" data-n="-1" aria-label="Trimestre anterior">‹</button><span class="name">' + qName(q) +
+      (q === C.quarterOf(td) ? ' (actual)' : '') + '</span><button class="ar" data-a="qmove" data-n="1" aria-label="Trimestre siguiente">›</button></div>';
     if (!st.days) return h + '<div class="note" style="text-align:center;margin:4px 0 10px">Aún no hay días registrados en este trimestre.</div></div>';
     C.SCOPES.forEach(function (s) {
       var n = st.scopes[s.id], p = Math.round(100 * n / st.days);
@@ -529,40 +525,56 @@
     return h + '<button class="btn danger block" data-a="emptytrash">Vaciar papelera</button>';
   }
 
+  /* ---------- Más: listas, cuenta, calendarios y avisos, copia de seguridad ---------- */
+  var MI = {
+    next: 'M5 12h14M13 6l6 6-6 6', list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+    cal: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5', sync: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5', bell: 'M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',
+    send: 'M4 12l16-8-6 16-3-7z', down: 'M12 4v11M7 10l5 5 5-5M5 20h14', up: 'M12 15V4M7 9l5-5 5 5M5 20h14', out: 'M10 5H5v14h5M15 8l4 4-4 4M19 12H9', cloud: 'M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z'
+  };
+  // Una fila de «Más»: icono de color, título, texto pequeño opcional, valor y flecha (o interruptor).
+  function mrow(o) {
+    var d = o.view ? ' data-view="' + o.view + '"' : '', sw = o.tog != null ? ' role="switch" aria-checked="' + !!o.tog + '"' : '';
+    return '<button class="mr' + (o.danger ? ' danger' : '') + '" data-a="' + o.a + '"' + d + sw + '><span class="mic" style="--c:' + (o.c || '#8d8d96') + '"><svg class="i" viewBox="0 0 24 24"><path d="' + MI[o.i] + '"/></svg></span>' +
+      '<span class="mt"><b>' + o.t + '</b>' + (o.sub ? '<small>' + o.sub + '</small>' : '') + '</span>' + (o.val != null ? '<span class="mv">' + o.val + '</span>' : '') +
+      (o.tog != null ? '<span class="tog' + (o.tog ? ' on' : '') + '"><i></i></span>' : o.danger || o.act ? '' : '<span class="chev">›</span>') + '</button>';
+  }
+  function syncTone(t) { return /No se pudo|caducó/.test(t) ? 'err' : /Sin conexión|pendientes|Pendiente|Sincronizando/.test(t) ? 'wait' : 'ok'; }
+  function profileCard() {
+    var s = Sync.info();
+    if (!s.email) {
+      return '<div class="card prof col"><div class="prof"><span class="av">' + '<svg class="i" viewBox="0 0 24 24" width="22" height="22"><path d="' + MI.cloud + '"/></svg></span><div class="who"><b>Sin cuenta</b>' +
+        '<div class="stt wait"><i></i>Solo en este dispositivo</div></div></div><div class="note" style="margin:12px 0">Inicia sesión para guardar tus datos en la nube y verlos igual en el móvil y en el ordenador.</div>' +
+        '<button class="btn primary block" data-a="login" style="margin:0">Iniciar sesión</button></div>';
+    }
+    return '<div class="card prof"><span class="av">' + esc(s.email.charAt(0)) + '</span><div class="who"><b>' + esc(s.email) + '</b><div class="stt ' + syncTone(s.text) + '"><i></i>' + esc(s.text) + '</div></div>' +
+      '<button class="ibtn" data-a="syncnow" aria-label="Sincronizar ahora"><svg class="i" viewBox="0 0 24 24"><path d="' + MI.sync + '"/></svg></button></div>';
+  }
   function viewMas() {
     setTop('Más', '');
-    var last = D.meta.lastBackup ? 'Última copia: ' + longDate(D.meta.lastBackup) : 'Aún no has hecho ninguna copia.';
-    return '<div class="menu card">' +
-      '<button data-a="nav" data-view="proximos">Próximos 7 días</button>' +
-      '<button data-a="nav" data-view="todo">Todo</button>' +
-      '<button data-a="nav" data-view="ambito">Por ámbito</button>' +
-      '<button data-a="nav" data-view="papelera">Papelera</button></div>' +
-      accountCard() + '<div class="sec">Copia de seguridad</div><div class="card">' +
-      '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
-      '<button class="btn block" data-a="export">Exportar copia</button>' +
-      '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 21</div>';
+    var email = !!(window.Sync && Sync.info().email), pend = allPending().length, bin = D.tasks.filter(function (t) { return t.deleted; }).length;
+    var h = (window.Sync ? profileCard() : '');
+    h += '<div class="sec">Tus listas</div><div class="card set">' +
+      mrow({ a: 'nav', view: 'proximos', i: 'next', c: '#4a9bff', t: 'Próximos 7 días' }) +
+      mrow({ a: 'nav', view: 'todo', i: 'list', c: '#34c759', t: 'Todo', val: pend }) +
+      mrow({ a: 'nav', view: 'ambito', i: 'folder', c: '#f5c518', t: 'Por ámbito' }) +
+      mrow({ a: 'nav', view: 'papelera', i: 'trash', c: '#ff6b6b', t: 'Papelera', val: bin || null }) + '</div>';
+    if (email) {
+      var gev = G.err ? esc(G.err) : G.at ? G.events.length + ' eventos · ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) : 'Pendiente de cargar';
+      h += '<div class="sec">Calendarios y avisos</div><div class="card set">' +
+        mrow({ a: 'cals', i: 'cal', c: '#a56bff', t: 'Calendarios', sub: 'Solo lectura, en «Día por horas»', val: calUrls().length + (D.meta.uniUrl ? 1 : 0) }) +
+        mrow({ a: 'gcalnow', act: 1, i: 'sync', c: '#4a9bff', t: 'Actualizar eventos', sub: gev + (G.warn && G.warn.length ? ' · ' + esc(G.warn.join(' · ')) : '') }) +
+        mrow({ a: D.meta.avisosOn ? 'avisosoff' : 'avisoson', i: 'bell', c: '#ff7a21', t: 'Avisos', sub: 'A la hora exacta de las tareas con hora', tog: !!D.meta.avisosOn }) +
+        (D.meta.avisosOn ? mrow({ a: 'avisotest', act: 1, i: 'send', c: '#ff7a21', t: 'Probar aviso ahora' }) : '') + '</div>';
+    }
+    h += '<div class="sec">Copia de seguridad</div><div class="card set">' +
+      mrow({ a: 'export', act: 1, i: 'down', c: '#34c759', t: 'Exportar copia', sub: D.meta.lastBackup ? 'Última copia: ' + longDate(D.meta.lastBackup) : 'Aún no has hecho ninguna copia' }) +
+      mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
+      '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
+    if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
+    return h + '<div class="ver">Versión 22</div>';
   }
 
-  /* ---------- Cuenta y sincronización ---------- */
-  function accountCard() {
-    if (!window.Sync) return '';
-    var s = Sync.info();
-    var h = '<div class="sec">Cuenta y sincronización</div><div class="card">';
-    if (s.email) {
-      h += '<div>' + esc(s.email) + '</div><div class="note" style="margin:2px 0 10px">' + esc(s.text) + '</div>' +
-        '<div class="note" style="margin:0 0 10px">Google Calendar: ' + (G.err ? esc(G.err) : G.at ? G.events.length + ' eventos cargados a las ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) + '.' : 'pendiente de cargar.') + (G.warn && G.warn.length ? ' Avisos: ' + esc(G.warn.join(' · ')) : '') + '</div>' +
-        '<div class="note" style="margin:0 0 10px">Avisos: ' + (D.meta.avisosOn ? 'activados. Llegan a la hora de las tareas que tienen hora.' : 'desactivados.') + '</div>' +
-        (D.meta.avisosOn ? '<button class="btn block" data-a="avisotest">Probar aviso ahora</button><button class="btn block" data-a="avisosoff">Desactivar avisos</button>' : '<button class="btn block" data-a="avisoson">Activar avisos en este dispositivo</button>') +
-        '<button class="btn block" data-a="syncnow">Sincronizar ahora</button>' +
-        '<button class="btn block" data-a="cals">Calendarios (' + calUrls().length + (D.meta.uniUrl ? ' + universidad' : '') + ')</button>' +
-        '<button class="btn block" data-a="logout">Cerrar sesión</button>';
-    } else {
-      h += '<div class="note" style="margin:0 0 10px">Inicia sesión para que tus datos se guarden en la nube y sean los mismos en el móvil y en el ordenador.</div>' +
-        '<button class="btn block primary" data-a="login">Iniciar sesión</button>';
-    }
-    return h + '</div>';
-  }
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
   function calUrls() { return String(D.meta.gUrls || '').split(' ').filter(Boolean); }
   function calLabel(u) {
@@ -651,7 +663,7 @@
 
   function chipsScope(sel) {
     return C.SCOPES.map(function (s) {
-      return '<button class="chip sc ' + (s.id === sel ? 'on' : '') + '" style="--c:' + s.color + '" data-a="fscope" data-v="' + s.id + '"><span class="sw"></span>' + s.name + '</button>';
+      return '<button class="chip sc ' + (s.id === sel ? 'on' : '') + '" style="--c:' + s.color + '" data-a="gscope" data-v="' + s.id + '"><span class="sw"></span>' + s.name + '</button>';
     }).join('');
   }
 
@@ -787,13 +799,13 @@
     }
     h += '<div class="mini"><div class="calhead"><button class="ar" data-a="fcalmove" data-n="-1">‹</button><span class="name">' + MESES[+p[1] - 1] + ' ' + p[0] +
       '</span><button class="ar" data-a="fcalmove" data-n="1">›</button></div><div class="calgrid">' + DL.map(function (l) { return '<span class="wd">' + l + '</span>'; }).join('') + cells + '</div></div>';
-    h += '<button class="acr" data-a="tktime"><span>Hora</span><span class="v">' + (timeText() || 'Ninguna') + ' ' + (form.timeOpen ? '▴' : '▾') + '</span></button>';
+    h += '<button class="acr" data-a="tktime"><span>Hora</span><span class="v">' + esc(timeText() || 'Ninguna') + ' ' + (form.timeOpen ? '▴' : '▾') + '</span></button>';
     if (form.timeOpen) {
-      h += '<div class="row" style="padding:2px 0 0"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio</div><input type="time" id="f-time" value="' + (form.time || '') + '"></div>' +
-        '<div style="flex:1"><div class="note" style="margin:0 0 4px">Fin (opcional)</div><input type="time" id="f-end" value="' + (form.end || '') + '"></div></div>' +
+      h += '<div class="row" style="padding:2px 0 0"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio</div><input type="time" id="f-time" value="' + esc(form.time || '') + '"></div>' +
+        '<div style="flex:1"><div class="note" style="margin:0 0 4px">Fin (opcional)</div><input type="time" id="f-end" value="' + esc(form.end || '') + '"></div></div>' +
         '<button class="btn block" data-a="ftimeclear" style="margin:0 0 10px;padding:9px">Quitar hora</button>';
     }
-    h += '<button class="acr" data-a="tkrec"><span>Repetir</span><span class="v">' + (recLabel(formRec()) || 'Ninguno') + ' ' + (form.recOpen ? '▴' : '▾') + '</span></button>';
+    h += '<button class="acr" data-a="tkrec"><span>Repetir</span><span class="v">' + esc(recLabel(formRec()) || 'Ninguno') + ' ' + (form.recOpen ? '▴' : '▾') + '</span></button>';
     if (form.recOpen) {
       h += '<div style="padding:2px 0 8px"><select id="f-rec">' +
         [['', 'No se repite'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes'], ['yearly', 'Cada año'], ['every', 'Cada X días, semanas o meses']]
@@ -841,7 +853,7 @@
         return '<button class="chip ' + (form.days.indexOf(i) >= 0 ? 'on' : '') + '" data-a="fday" data-v="' + i + '">' + l + '</button>';
       }).join('') + '</div>';
     } else if (ty === 'every') {
-      h = '<div class="row" style="margin-top:8px"><span>Cada</span><input type="number" id="f-n" min="1" max="999" value="' + form.n + '" style="width:80px">' +
+      h = '<div class="row" style="margin-top:8px"><span>Cada</span><input type="number" id="f-n" min="1" max="999" value="' + (+form.n || 1) + '" style="width:80px">' +
         '<select id="f-unit"><option value="d"' + (form.unit === 'd' ? ' selected' : '') + '>días</option><option value="w"' + (form.unit === 'w' ? ' selected' : '') +
         '>semanas</option><option value="m"' + (form.unit === 'm' ? ' selected' : '') + '>meses</option></select></div>';
     }
@@ -1091,18 +1103,6 @@
       case 'avisotest': testAviso(); break;
       case 'cals': openCals(); break;
       case 'calnew': case 'calchg': case 'caldel': calAction(a, id); break;
-      case 'gurls':
-        var gv = prompt('Pega aquí los enlaces secretos iCal de tus calendarios de Google, separados por un espacio (déjalo vacío para quitarlos):', D.meta.gUrls || '');
-        if (gv === null) break;
-        gv = gv.trim().replace(/\s+/g, ' ');
-        if (gv && gv.split(' ').some(function (x) { return !/^https:\/\//i.test(x); })) { alert('Cada enlace debe empezar por https://'); break; }
-        D.meta.gUrls = gv; save(); G.fail = 0; ensureG(true); render(); break;
-      case 'uni':
-        var uv = prompt('Pega aquí el enlace del horario de la universidad (déjalo vacío para quitarlo):', D.meta.uniUrl || '');
-        if (uv === null) break;
-        uv = uv.trim();
-        if (uv && !/^https:\/\//i.test(uv)) { alert('El enlace debe empezar por https://'); break; }
-        D.meta.uniUrl = uv; save(); G.fail = 0; ensureG(true); render(); break;
       /* formulario de tarea */
       case 'tkmenu': form.menu = form.menu === v ? null : v; drawMenu(); break;
       case 'fsub': form.sub = v; form.menu = null; drawMenu(); refreshTop(); break;
@@ -1145,6 +1145,9 @@
       case 'deltask':
         t = findTask(form.id); t.deleted = true; t.deletedAt = Date.now(); save(); closeSheet(); render(); break;
       /* formulario de objetivo */
+      case 'gscope':
+        form.scope = v;
+        [].forEach.call($('f-scope').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); break;
       case 'gstate':
         form.status = v;
         [].forEach.call($('g-st').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); break;
@@ -1156,7 +1159,8 @@
   });
 
   document.addEventListener('change', function (e) {
-    var id = e.target.id;
+    var t = e.target, id = t.id;
+    if (t.dataset && t.dataset.gcal) { D.meta.gColors = D.meta.gColors || {}; D.meta.gColors[t.dataset.gcal] = t.value; save(); render(); return; }
     if (!form || !id) return;
     if (id === 'f-rec') {
       form.recType = e.target.value;
@@ -1303,11 +1307,6 @@
   });
   // Al volver a abrir la app o cambiar de día, refrescar «Hoy».
   document.addEventListener('visibilitychange', function () { if (!document.hidden && $('sheet').classList.contains('hidden')) render(); });
-
-  document.addEventListener('change', function (e) {
-    var t = e.target;
-    if (t && t.dataset && t.dataset.gcal) { D.meta.gColors = D.meta.gColors || {}; D.meta.gColors[t.dataset.gcal] = t.value; save(); render(); }
-  });
 
   render();
   if (window.Sync) Sync.init({
