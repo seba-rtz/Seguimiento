@@ -221,3 +221,17 @@ body.noscroll{overflow:hidden}
 .mini-b{padding:6px 10px;border-radius:9px;background:var(--card);font-size:13.5px}
 .mini-b.danger{color:#ff6b6b}
 *{touch-action:manipulation}
+
+.goal .m{font-size:12.5px;color:var(--muted);margin-top:2px}
+.goal.cumplido .t{text-decoration:none}
+.goal.cumplido .tt{text-decoration:line-through}
+.cd{flex:none;font-size:13px;font-weight:600;color:var(--muted);text-align:right}
+.cd.soon{color:var(--accent)}
+.cd.late{color:#ff6b6b}
+.qrow{display:flex;align-items:center;gap:8px;margin:9px 0;font-size:14px}
+.qn{flex:none;width:96px;display:flex;align-items:center;gap:7px}
+.qn i{width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
+.qbar{flex:1;min-width:0;height:10px;border-radius:6px;background:var(--card2);overflow:hidden}
+.qbar b{display:block;height:100%;border-radius:6px;background:var(--c)}
+.qp{flex:none;width:88px;text-align:right}
+.qp small{color:var(--muted);font-size:12px;margin-left:5px}
