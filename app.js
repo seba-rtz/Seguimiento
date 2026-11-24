@@ -468,23 +468,51 @@
   }
 
   function qName(q) { return q.slice(6) + 'º trimestre ' + q.slice(0, 4); }
-  function viewObj() {
-    setTop('Objetivos', qName(ui.quarter));
-    var h = '<div class="calhead"><button class="ar" data-a="qmove" data-n="-1">‹</button><span class="name">' + qName(ui.quarter) +
-      (ui.quarter === C.quarterOf(C.today()) ? ' (actual)' : '') + '</span><button class="ar" data-a="qmove" data-n="1">›</button></div>';
-    var gs = D.goals.filter(function (g) { return g.quarter === ui.quarter; });
-    if (!gs.length) return h + '<div class="empty">No hay objetivos en este trimestre. Pulsa + para añadir uno.</div>';
+  function shortDate(s) {
+    var d = C.parse(s);
+    return d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3) + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+  }
+  function goalCount(end, td) {
+    if (!end) return '';
+    var n = C.diffDays(td, end);
+    if (n < 0) return '<span class="cd late">Venció hace ' + (-n) + (n === -1 ? ' día' : ' días') + '</span>';
+    if (n === 0) return '<span class="cd soon">Hoy</span>';
+    if (n === 1) return '<span class="cd soon">Mañana</span>';
+    return '<span class="cd' + (n <= 7 ? ' soon' : '') + '">' + n + ' días</span>';
+  }
+  function goalRow(g, td) {
+    var s = C.scopeById(g.scope), end = C.goalEnd(g), start = C.goalStart(g);
+    var st = C.GOAL_STATES.filter(function (x) { return x.id === g.status; })[0] || C.GOAL_STATES[0];
+    var meta = s.name + (end ? ' · hasta el ' + shortDate(end) : ' · sin fecha límite') + (start && start > td ? ' · empieza el ' + shortDate(start) : '');
+    return '<div class="goal ' + esc(g.status) + '" style="--c:' + s.color + '"><span class="bar"></span><div class="t" data-a="goaledit" data-id="' + esc(g.id) + '"><span class="tt">' +
+      esc(g.title) + '</span><div class="m">' + esc(meta) + '</div></div>' + (g.status === 'cumplido' ? '' : goalCount(end, td)) +
+      '<button class="pill ' + esc(g.status) + '" data-a="goalcycle" data-id="' + esc(g.id) + '">' + st.name + '</button></div>';
+  }
+  function quarterCard(td) {
+    var q = ui.quarter, st = C.quarterStats(D, q, td);
+    var h = '<div class="card"><div class="calhead" style="margin:0 0 6px"><button class="ar" data-a="qmove" data-n="-1">‹</button><span class="name">' + qName(q) +
+      (q === C.quarterOf(td) ? ' (actual)' : '') + '</span><button class="ar" data-a="qmove" data-n="1">›</button></div>';
+    if (!st.days) return h + '<div class="note" style="text-align:center;margin:4px 0 10px">Aún no hay días registrados en este trimestre.</div></div>';
     C.SCOPES.forEach(function (s) {
-      var arr = gs.filter(function (g) { return g.scope === s.id; });
-      if (!arr.length) return;
-      h += '<div class="sec">' + s.name + '</div>';
-      arr.forEach(function (g) {
-        var st = C.GOAL_STATES.filter(function (x) { return x.id === g.status; })[0] || C.GOAL_STATES[0];
-        h += '<div class="goal ' + esc(g.status) + '" style="--c:' + s.color + '"><span class="bar"></span><div class="t" data-a="goaledit" data-id="' + esc(g.id) + '">' +
-          esc(g.title) + '</div><button class="pill ' + esc(g.status) + '" data-a="goalcycle" data-id="' + esc(g.id) + '">' + st.name + '</button></div>';
-      });
+      var n = st.scopes[s.id], p = Math.round(100 * n / st.days);
+      h += '<div class="qrow" style="--c:' + s.color + '"><span class="qn"><i></i>' + s.name + '</span><span class="qbar"><b style="width:' + p + '%"></b></span><span class="qp">' + p + ' %<small>' + n + '/' + st.days + '</small></span></div>';
     });
-    return h;
+    var hasta = st.to === td ? 'hoy' : 'el ' + shortDate(st.to);
+    return h + '<div class="note">' + (st.from > st.qs ? 'Cuenta desde tu primer día registrado, el ' + shortDate(st.from) + ', hasta ' + hasta : 'Del ' + shortDate(st.from) + ' hasta ' + hasta) +
+      '. Sale del registro diario de «Hoy».</div></div>';
+  }
+  function viewObj() {
+    var td = C.today();
+    var act = D.goals.filter(function (g) { return g.status !== 'cumplido'; });
+    var done = D.goals.filter(function (g) { return g.status === 'cumplido'; });
+    var k1 = function (g) { return C.goalEnd(g) || '9999-99-99'; }, k2 = function (g) { return C.goalEnd(g) || '0000-00-00'; };
+    act.sort(function (a, b) { return k1(a) < k1(b) ? -1 : k1(a) > k1(b) ? 1 : a.title.localeCompare(b.title, 'es'); });
+    done.sort(function (a, b) { return k2(a) < k2(b) ? 1 : k2(a) > k2(b) ? -1 : 0; });
+    setTop('Objetivos', act.length === 1 ? '1 objetivo activo' : act.length + ' objetivos activos');
+    var h = '<div class="sec">Activos</div>';
+    h += act.length ? act.map(function (g) { return goalRow(g, td); }).join('') : '<div class="empty">No hay objetivos activos. Pulsa + para añadir uno.</div>';
+    if (done.length) h += '<div class="sec">Cumplidos</div>' + done.map(function (g) { return goalRow(g, td); }).join('');
+    return h + '<div class="sec">Cumplimiento del trimestre</div>' + quarterCard(td);
   }
 
   function viewPapelera() {
@@ -513,7 +541,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 18</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 19</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
@@ -848,17 +876,15 @@
 
   function openGoal(id) {
     var g = id ? D.goals.filter(function (x) { return x.id === id; })[0] : null;
-    var cur = C.quarterOf(C.today()), qs = [];
-    for (var i = -2; i <= 4; i++) qs.push(C.shiftQuarter(cur, i));
     form = { goalId: id, scope: g ? g.scope : (ui.view === 'ambito' ? ui.scope : ui.lastScope), status: g ? g.status : 'pendiente' };
-    if (g && qs.indexOf(g.quarter) < 0) qs.push(g.quarter);
-    var qSel = g ? g.quarter : ui.quarter;
-    if (qs.indexOf(qSel) < 0) qs.push(qSel);
-    qs.sort();
+    var start = g ? (C.goalStart(g) || C.today()) : C.today(), end = g ? (C.goalEnd(g) || '') : '';
     var h = '<h2>' + (g ? 'Editar objetivo' : 'Nuevo objetivo') + '</h2>' +
-      '<input id="g-title" placeholder="¿Qué quieres lograr este trimestre?" value="' + (g ? esc(g.title) : '') + '" autocomplete="off">' +
+      '<input id="g-title" placeholder="¿Qué quieres lograr?" value="' + (g ? esc(g.title) : '') + '" autocomplete="off">' +
       '<div class="lbl">Ámbito</div><div class="chips" id="f-scope">' + chipsScope(form.scope) + '</div>' +
-      '<div class="lbl">Trimestre</div><select id="g-q">' + qs.map(function (q) { return '<option value="' + q + '"' + (q === qSel ? ' selected' : '') + '>' + qName(q) + '</option>'; }).join('') + '</select>' +
+      '<div class="lbl">Empieza</div><input id="g-start" type="date" value="' + esc(start) + '">' +
+      '<div class="lbl">Fecha límite (opcional)</div><input id="g-end" type="date" value="' + esc(end) + '">' +
+      '<div class="chips" style="margin-top:8px"><button class="chip" data-a="gend" data-v="q">Fin de este trimestre</button><button class="chip" data-a="gend" data-v="">Sin fecha límite</button></div>' +
+      '<div class="note" id="g-msg" style="color:#ff6b6b"></div>' +
       '<div class="lbl">Estado</div><div class="chips" id="g-st">' + C.GOAL_STATES.map(function (s) {
         return '<button class="chip ' + (s.id === form.status ? 'on' : '') + '" data-a="gstate" data-v="' + s.id + '">' + s.name + '</button>';
       }).join('') + '</div><div class="actions"><button class="btn primary" data-a="savegoal">' + (g ? 'Guardar' : 'Añadir') + '</button>' +
@@ -869,10 +895,12 @@
   function saveGoal() {
     var title = $('g-title').value.trim();
     if (!title) { $('g-title').focus(); return; }
+    var start = $('g-start').value || C.today(), end = $('g-end').value || '';
+    if (end && end < start) { $('g-msg').textContent = 'La fecha límite no puede ser anterior al inicio.'; return; }
     var g = form.goalId ? D.goals.filter(function (x) { return x.id === form.goalId; })[0] : null;
     if (!g) { g = { id: C.uid() }; D.goals.push(g); }
-    g.title = title; g.scope = form.scope; g.quarter = $('g-q').value; g.status = form.status;
-    ui.lastScope = form.scope; ui.quarter = g.quarter;
+    g.title = title; g.scope = form.scope; g.start = start; g.end = end; g.quarter = C.quarterOf(start); g.status = form.status;
+    ui.lastScope = form.scope;
     save(); closeSheet(); render();
   }
 
@@ -1120,6 +1148,7 @@
       case 'gstate':
         form.status = v;
         [].forEach.call($('g-st').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); break;
+      case 'gend': $('g-end').value = el.dataset.v === 'q' ? C.quarterEnd(C.quarterOf(C.today())) : ''; break;
       case 'savegoal': saveGoal(); break;
       case 'delgoal':
         if (confirm('¿Eliminar este objetivo?')) { D.goals = D.goals.filter(function (x) { return x.id !== form.goalId; }); save(); closeSheet(); render(); } break;
