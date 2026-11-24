@@ -1,4 +1,4 @@
-// SEGUIMIENTO-WIDGET v8 · Widget grande de Seguimiento para Scriptable (solo lectura)
+// SEGUIMIENTO-WIDGET v9 · Widget grande de Seguimiento para Scriptable (solo lectura)
 const BASE = 'https://seba-rtz.github.io/Seguimiento/';
 const SB = 'https://brclicidivpxqmzfxwsb.supabase.co';
 const KEY = 'sb_publishable_javfWi55UYm9z1f8pEYZMg_KSKgIlsa';
@@ -128,31 +128,31 @@ async function main() {
 
   /* Registro de cumplimiento de la semana */
   const monday = Core.mondayOf(today), tot = Core.weekTotals(D, monday);
-  const LW = 78, RW = 28;
-  const cw = Math.floor((W - 24 - LW - RW - 30 - 6) / 7);
+  const LW = 78, RW = 28, RH = 21;
+  // Ancho útil = ancho del widget - 24 de margen; 9 elementos por fila con 8 huecos de 3
+  const cw = Math.floor((W - 24 - LW - RW - 24) / 7);
   const gridRow = function (label, lcol, cells, total, tcol) {
     const r = w.addStack();
     r.centerAlignContent();
     r.spacing = 3;
-    r.addSpacer();
     const l = r.addStack();
-    l.size = new Size(LW, 19);
+    l.size = new Size(LW, RH);
     l.centerAlignContent();
     txt(l, label, 13, lcol);
+    l.addSpacer(); // nombre pegado a la izquierda, alineado con «Hoy»
     cells.forEach(function (c) {
       const s = r.addStack();
-      s.size = new Size(cw, 19);
+      s.size = new Size(cw, RH);
       s.centerAlignContent();
       if (c.fill) { s.backgroundColor = c.fill; s.cornerRadius = 4; }
       if (c.border) { s.borderColor = ORANGE; s.borderWidth = 1.5; s.cornerRadius = 4; }
       if (c.t) { s.addSpacer(); txt(s, c.t, 11, c.tc); s.addSpacer(); }
     });
     const q = r.addStack();
-    q.size = new Size(RW, 19);
+    q.size = new Size(RW, RH);
     q.centerAlignContent();
     q.addSpacer();
     txt(q, total, 15, tcol || GREY, true);
-    r.addSpacer();
   };
   const letters = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
   gridRow('', GREY, letters.map(function (l, i) { return { t: l, tc: Core.addDays(monday, i) === today ? ORANGE : GREY }; }), '');
