@@ -87,12 +87,12 @@ input[type=date],input[type=time]{min-height:46px}
 .day.sel.today{color:#fff}
 
 /* registro semanal */
-.grid{display:grid;grid-template-columns:88px repeat(7,1fr) 44px;gap:5px;align-items:center}
+.grid{display:grid;grid-template-columns:92px repeat(7,1fr) 26px;gap:5px;align-items:center}
 .grid .h{text-align:center;font-size:12px;color:var(--muted)}
 .grid .h.today{color:var(--accent);font-weight:700}
-.grid .name{font-size:12.5px;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap}
+.grid .name{font-size:14px;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap}
 .grid .name i{width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
-.cell{height:34px;border-radius:9px;background:var(--card2);border:2px solid transparent;color:#111;font-weight:700}
+.cell{height:38px;border-radius:10px;background:var(--card2);border:2px solid transparent;color:#111;font-weight:700}
 .cell.on{background:var(--c)}
 .cell.today{border-color:var(--accent)}
 .grid .tot{text-align:right;font-size:13px;color:var(--muted)}
@@ -236,6 +236,6 @@ body.noscroll{overflow:hidden}
 .qp{flex:none;width:88px;text-align:right}
 .qp small{color:var(--muted);font-size:12px;margin-left:5px}
 
-.grid .tot.rk{font-weight:700;font-size:15px;color:var(--c)}
+.grid .tot.rk{font-weight:700;font-size:16px;color:var(--c);text-align:center}
 .grid .tot.rk.z{font-weight:400;color:var(--muted)}
 .grid .h.rkh{font-size:11px}
