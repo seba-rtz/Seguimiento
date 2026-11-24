@@ -132,6 +132,14 @@ input[type=date],input[type=time]{min-height:46px}
 
 /* subcategorías */
 .subh{margin:12px 4px 4px;color:var(--muted);font-size:12.5px;font-weight:700}
+/* Buzón compacto: carpeta + ámbito, panel interior, subcategorías como texto y tareas sin tarjeta */
+.gico{flex:none;color:var(--c)}
+.grp .gbody{background:rgba(255,255,255,.04);border-radius:14px;padding:4px 12px 8px}
+.grp .gbody .task{background:none;border-radius:0;padding:7px 0;margin:0}
+.grp .task .bar,.grp .task .tag{display:none}
+.grp .task .chk{width:22px;height:22px;border-radius:6px;border-color:var(--muted)}
+.grp .subh{margin:10px 0 2px;font-size:14px;font-weight:500}
+.grp .gbody .task.drag{background:var(--card2);border-radius:10px;padding:7px 8px}
 
 /* arrastrar */
 .ev{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
