@@ -1,6 +1,6 @@
 /* Service worker: la app funciona sin conexión. Con conexión, usa siempre la versión más nueva. */
-var V = 'seguimiento-v19';
-var FILES = ['./', 'index.html', 'styles.css?v=19', 'core.js?v=19', 'sync.js?v=19', 'app.js?v=19', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+var V = 'seguimiento-v20';
+var FILES = ['./', 'index.html', 'styles.css?v=20', 'core.js?v=20', 'sync.js?v=20', 'app.js?v=20', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(V).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
