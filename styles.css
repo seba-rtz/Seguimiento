@@ -130,6 +130,9 @@ input[type=date],input[type=time]{min-height:46px}
 .now{position:absolute;left:46px;right:0;z-index:3;height:2px;background:var(--accent);pointer-events:none}
 .now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--accent)}
 
+/* subcategorías */
+.subh{margin:12px 4px 4px;color:var(--muted);font-size:12.5px;font-weight:700}
+
 /* arrastrar */
 .ev{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .ev.drag{box-shadow:0 8px 22px rgba(0,0,0,.6);z-index:5;outline:2px solid var(--fg)}
