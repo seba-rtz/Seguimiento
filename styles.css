@@ -200,7 +200,7 @@ body.noscroll{overflow:hidden}
 #notespage{position:fixed;left:0;right:0;top:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding:calc(var(--sat) + 8px) 14px 0}
 #notespage .nhead{display:flex;align-items:center;gap:12px;padding:4px 0 8px;font-size:17px;font-weight:700}
 #notespage .ntool{display:flex;gap:6px;padding:6px 0 10px;overflow-x:auto;flex:none}
-#notespage .ntool button{min-width:42px;padding:9px 12px;border-radius:10px;background:var(--card2);font-size:15px;white-space:nowrap}
+#notespage .ntool button{flex:none;min-width:42px;padding:9px 12px;border-radius:10px;background:var(--card2);font-size:15px;white-space:nowrap}
 #f-notes{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--card);border-radius:14px;padding:14px;font-size:16.5px;line-height:1.5;outline:none;margin-bottom:calc(8px + var(--sab));-webkit-user-select:text;user-select:text}
 #f-notes:empty:before,#f-notes:has(>br:only-child):before{content:attr(data-ph);color:var(--muted)}
 .nrich h3{font-size:18px;margin:.6em 0 .2em}
@@ -211,3 +211,13 @@ body.noscroll{overflow:hidden}
 .tk-notesbtn .npl{font-size:12.5px;color:var(--muted);margin-bottom:3px}
 .tk-notesbtn .npv{color:var(--text);font-size:14.5px;line-height:1.4;max-height:6.2em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
 .tk-notesbtn .npv h3{font-size:15px;margin:0}
+.nrich ul.cl{list-style:none;padding-left:0}
+.nrich ul.cl li{position:relative;padding-left:1.9em;min-height:1.4em}
+.nrich ul.cl li::before{content:'';position:absolute;left:0;top:.2em;width:1.05em;height:1.05em;border:2px solid var(--muted);border-radius:4px;box-sizing:border-box}
+.nrich ul.cl li.done::before{content:'✓';background:var(--accent);border-color:var(--accent);color:#fff;font-size:.75em;line-height:1.15em;text-align:center;font-weight:700}
+.nrich ul.cl li.done{color:var(--muted);text-decoration:line-through}
+.tk-menu .mi.se{flex-wrap:wrap;gap:6px}
+.tk-menu .mi.se>span{flex:1 1 100%}
+.mini-b{padding:6px 10px;border-radius:9px;background:var(--card);font-size:13.5px}
+.mini-b.danger{color:#ff6b6b}
+*{touch-action:manipulation}
