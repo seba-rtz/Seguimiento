@@ -163,14 +163,15 @@ async function main() {
   });
   w.addSpacer();
 
-  /* Objetivos del trimestre: uno por cada uno de los tres primeros ámbitos */
-  const q = Core.quarterOf(today);
-  txt(w, 'Objetivos del ' + q.slice(6) + '.º trimestre', 11, GREY);
+  /* Objetivos activos: el de fecha límite más cercana de cada uno de los tres primeros ámbitos */
+  txt(w, 'Próximos objetivos', 11, GREY);
   w.addSpacer(4);
+  const gEnd = function (g) { return Core.goalEnd ? Core.goalEnd(g) : (g.end || ''); };
   ['salud', 'formacion', 'proyectos'].forEach(function (id) {
     const sc = Core.scopeById(id);
-    const gs = D.goals.filter(function (g) { return g.quarter === q && g.scope === id; });
-    const g = gs.filter(function (x) { return x.status !== 'cumplido'; })[0] || gs[0];
+    const gs = D.goals.filter(function (g) { return g.scope === id && g.status !== 'cumplido'; })
+      .sort(function (a, b) { const ea = gEnd(a) || '9999-99-99', eb = gEnd(b) || '9999-99-99'; return ea < eb ? -1 : ea > eb ? 1 : 0; });
+    const g = gs[0];
     const r = w.addStack();
     r.centerAlignContent();
     r.spacing = 7;
@@ -178,11 +179,17 @@ async function main() {
     bar.size = new Size(3, 16);
     bar.cornerRadius = 2;
     bar.backgroundColor = new Color(sc.color);
-    txt(r, g ? g.title : 'Sin objetivo este trimestre', 13, g ? TXT : GREY);
+    txt(r, g ? g.title : 'Sin objetivos activos', 13, g ? TXT : GREY);
     r.addSpacer();
     if (g) {
-      const st = g.status === 'cumplido' ? ['Cumplido', new Color('#34c759')] : g.status === 'en_curso' ? ['En curso', ORANGE] : ['Pendiente', GREY];
-      txt(r, st[0], 11, st[1]);
+      const e = gEnd(g);
+      let label, col = GREY;
+      if (e) {
+        const n = Core.diffDays(today, e);
+        label = n < 0 ? 'Venció' : n === 0 ? 'Hoy' : n === 1 ? 'Mañana' : n + ' días';
+        col = n <= 7 ? ORANGE : GREY;
+      } else label = g.status === 'en_curso' ? 'En curso' : 'Pendiente';
+      txt(r, label, 11, col);
     }
     w.addSpacer(4);
   });
