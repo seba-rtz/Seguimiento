@@ -225,6 +225,7 @@
     if (t.time) meta.push(t.end ? t.time + '–' + t.end : t.time);
     if (!inbox) { var sb = noSub ? null : subById(t.sub); meta.push(sc.name + (sb ? ' › ' + sb.name : '')); }
     if (t.rec) meta.push('↻ ' + recLabel(t.rec));
+    if (t.rec && t.mv && d) { var og = C.origOf(t, d); if (og && og !== d) meta.push('movida del ' + shortDate(og)); }
     var mark = st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '';
     return '<div class="task ' + esc(st || '') + '" style="--c:' + sc.color + '" data-group="' + esc(d || '') + '">' +
       '<span class="bar"></span><span class="dots">' + dots + '</span>' +
@@ -238,11 +239,15 @@
   }
 
   /* ---------- Consultas ---------- */
-  function pendingNonRec() { return D.tasks.filter(function (t) { return !t.deleted && !t.rec && !C.getState(t); }); }
+  // Atrasadas: tareas sin repetir con fecha pasada y, de las repetidas, cada vez que pasó sin hacerse ni descartarse.
   function overdue() {
-    var td = C.today();
-    return C.sortItems(pendingNonRec().filter(function (t) { return t.date && t.date < td; }).map(function (t) { return { t: t, d: t.date }; }))
-      .sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
+    var td = C.today(), items = [];
+    D.tasks.forEach(function (t) {
+      if (t.deleted) return;
+      if (t.rec) C.missed(t, td).forEach(function (d) { items.push({ t: t, d: d }); });
+      else if (t.date && t.date < td && !C.getState(t)) items.push({ t: t, d: t.date });
+    });
+    return C.sortItems(items).sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
   }
   function allPending(scope) {
     var td = C.today(), out = [];
@@ -572,7 +577,7 @@
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 22</div>';
+    return h + '<div class="ver">Versión 23</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -778,6 +783,7 @@
     } else if (m === 'more') {
       var t = findTask(form.id), st = C.getState(t, form.ctx || t.date);
       h += menuItem('wontdo', '', st === 'wontdo' ? 'Quitar «No lo haré»' : 'No lo haré', false);
+      if (t.rec && form.ctx && !st) h += menuItem('mvopen', '', 'Mover solo esta vez…', false);
       if (t.rec && form.ctx) h += menuItem('delone', '', 'Eliminar solo el ' + shortDate(form.ctx), false, 'danger');
       h += menuItem('deltask', '', t.rec ? 'Eliminar toda la serie' : 'Eliminar', false, 'danger');
     }
@@ -858,6 +864,29 @@
         '>semanas</option><option value="m"' + (form.unit === 'm' ? ' selected' : '') + '>meses</option></select></div>';
     }
     el.innerHTML = h;
+  }
+
+  /* ---------- Mover solo esta vez una tarea repetida (y empujar el resto si choca) ---------- */
+  var mvs = null; // { id, from, plan }
+  function openMove() {
+    var t = findTask(mvs.id), td = C.today();
+    openSheet('<h2>Mover solo esta vez</h2><div class="note" style="margin:0 0 10px">«' + esc(t.title) + '» · ahora el ' + esc(longDate(mvs.from)) + '. El resto de la serie no cambia.</div>' +
+      '<div class="lbl">Nuevo día</div><input id="m-date" type="date" value="' + (mvs.from < td ? td : C.addDays(mvs.from, 1)) + '">' +
+      '<div class="chips" style="margin-top:8px"><button class="chip" data-a="mvquick" data-v="0">Hoy</button><button class="chip" data-a="mvquick" data-v="1">Mañana</button></div>' +
+      '<div class="note" id="m-msg" style="color:#ff6b6b"></div>' +
+      '<div class="actions"><button class="btn primary" data-a="mvgo">Mover</button><button class="btn" data-a="close">Cancelar</button></div>');
+  }
+  function openMovePreview(t) {
+    var mv = mvs.plan;
+    openSheet('<h2>Ese día ya hay otra</h2><div class="note" style="margin:0 0 10px">«' + esc(t.title) + '» ya está el ' + esc(longDate(mv[0].to)) +
+      '. Para no juntarlas, se empujan las siguientes un día hasta encontrar un día libre:</div><div class="card">' +
+      mv.map(function (m) { return '<div class="mvrow"><span>' + esc(longDate(m.from)) + '</span><b>→</b><span>' + esc(longDate(m.to)) + '</span></div>'; }).join('') + '</div>' +
+      '<div class="note">Las demás veces de la serie no se tocan. Si prefieres no empujar, las dos se verán como una sola tarea ese día.</div>' +
+      '<div class="actions"><button class="btn primary" data-a="mvpush">Empujar el resto</button><button class="btn" data-a="mvmerge">Mover y juntarlas ese día</button><button class="btn" data-a="close">Cancelar</button></div>');
+  }
+  function doMove(moves) {
+    C.applyMoves(findTask(mvs.id), moves);
+    save(); closeSheet(); render();
   }
 
   function saveTask() {
@@ -1131,6 +1160,16 @@
         var cm = (form.calMonth || (form.date || C.today()).slice(0, 7)).split('-'), cd = new Date(+cm[0], +cm[1] - 1 + (+el.dataset.n), 1);
         form.calMonth = C.fmt(cd).slice(0, 7); drawDatePanel(); break;
       case 'ftimeclear': form.time = null; form.end = null; drawDatePanel(); refreshTop(); break;
+      case 'mvopen': mvs = { id: form.id, from: form.ctx }; closeSheet(); openMove(); break;
+      case 'mvquick': $('m-date').value = C.addDays(C.today(), +v); break;
+      case 'mvgo':
+        var to = $('m-date').value, mt = findTask(mvs.id), pl = to ? C.planMove(mt, mvs.from, to) : { blocked: 'Elige un día.' };
+        if (to === mvs.from) pl = { blocked: 'Elige un día distinto del actual.' };
+        if (pl.blocked) { $('m-msg').textContent = pl.blocked; break; }
+        if (pl.moves.length === 1) { doMove(pl.moves); break; }
+        mvs.plan = pl.moves; openMovePreview(mt); break;
+      case 'mvpush': doMove(mvs.plan); break;
+      case 'mvmerge': doMove(mvs.plan.slice(0, 1)); break;
       case 'tknotes': openNotes(); break;
       case 'nback': closeNotes(); refreshTop(); break;
       case 'fday':
@@ -1141,7 +1180,7 @@
         t = findTask(form.id); var dd = form.ctx || t.date;
         C.setState(t, dd, C.getState(t, dd) === 'wontdo' ? null : 'wontdo'); save(); closeSheet(); render(); break;
       case 'delone':
-        t = findTask(form.id); t.ex = t.ex || []; t.ex.push(form.ctx); save(); closeSheet(); render(); break;
+        t = findTask(form.id); C.removeOcc(t, form.ctx); save(); closeSheet(); render(); break;
       case 'deltask':
         t = findTask(form.id); t.deleted = true; t.deletedAt = Date.now(); save(); closeSheet(); render(); break;
       /* formulario de objetivo */
