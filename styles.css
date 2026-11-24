@@ -168,3 +168,34 @@ body.dragging{overscroll-behavior:none}
 .grp .task{background:rgba(255,255,255,.04);margin-bottom:6px}
 .task .body{flex:1;min-width:0}
 .task .tag{flex:none;align-self:flex-end;color:var(--muted);font-size:13px}
+
+/* Formulario de tarea compacto */
+.tk-top{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;background:var(--card2);font-size:14.5px;max-width:100%}
+.pill.dim{color:var(--muted)}
+.pill.sq{padding:8px 14px}
+.pill b{font-weight:700;letter-spacing:1px}
+.pill .ch,.tk-date .ch{color:var(--muted);font-size:11px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none}
+.tk-menu{background:var(--card2);border-radius:14px;padding:4px;margin-bottom:10px}
+.tk-menu .mi{display:flex;align-items:center;gap:10px;width:100%;padding:12px;border-radius:10px;text-align:left;font-size:15.5px}
+.tk-menu .mi.on{color:var(--accent)}
+.tk-menu .mi.danger{color:#ff6b6b}
+.tk-menu .mi .ck{margin-left:auto}
+.tk-date{display:flex;align-items:center;gap:8px;width:100%;padding:8px 2px;font-size:15px;text-align:left}
+.tk-date span:nth-child(2){flex:1}
+.tk-date.late{color:#ff5d5d}
+.tk-datepanel{background:var(--card2);border-radius:16px;padding:10px;margin:4px 0 8px}
+.qd{display:flex;gap:6px;margin-bottom:8px}
+.qd button{flex:1;padding:9px 2px;border-radius:12px;background:var(--card);font-size:13.5px;border:1.5px solid transparent}
+.qd button.on{border-color:var(--accent);color:var(--accent)}
+.mini .calgrid{background:none;padding:0}
+.mini .day{height:38px}
+.acr{display:flex;align-items:center;justify-content:space-between;width:100%;padding:13px 4px;border-top:1px solid var(--line);font-size:15.5px}
+.acr .v{color:var(--muted);font-size:14.5px}
+#f-title{background:none;border:0;padding:8px 2px;font-size:21px;font-weight:600}
+.tk-notesbtn{display:flex;align-items:center;gap:8px;padding:8px 2px;color:var(--muted);font-size:15px}
+.tk-notesbtn.has{color:var(--text)}
+textarea{font:inherit;color:var(--text);background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;width:100%;font-size:16px;resize:none;min-width:0}
+#f-notes{min-height:52vh;line-height:1.45}
+#sheet .panel.tall{min-height:80vh}
