@@ -72,8 +72,17 @@
   }
 
   /* ---------- Recurrencia ---------- */
+  // Una repetida puede tener ocurrencias movidas solo esa vez: t.mv = { fecha original: fecha nueva }.
+  function movedIn(t, d) { if (t.mv) for (var k in t.mv) if (t.mv[k] === d) return k; return null; }
   function occursOn(t, d) {
     if (!t.date) return false;
+    if (t.rec && t.mv) {
+      if (movedIn(t, d)) return true;
+      if (t.mv[d]) return false;
+    }
+    return baseOn(t, d);
+  }
+  function baseOn(t, d) {
     if (!t.rec) return t.date === d;
     if (d < t.date) return false;
     if (t.ex && t.ex.indexOf(d) >= 0) return false;
@@ -94,6 +103,50 @@
         return md % n === 0 && x.getDate() === clampDay;
     }
     return false;
+  }
+
+  // Fecha original (la de la serie) de la ocurrencia que hoy se ve en el día d, o null si ese día no hay.
+  function origOf(t, d) {
+    var k = movedIn(t, d);
+    if (k) return k;
+    return t.rec && baseOn(t, d) && !(t.mv && t.mv[d]) ? d : null;
+  }
+  // Mover solo esta vez la ocurrencia del día `from` al día `to`. Si ya hay otra de la serie, empuja las siguientes
+  // un día cada una hasta encontrar un día libre. Devuelve { moves: [{from, to}] } o { blocked: texto }.
+  function planMove(t, from, to) {
+    var moves = [{ from: from, to: to }], d = to, n = 0;
+    if (!t.rec || from === to || origOf(t, from) == null) return { blocked: 'No se puede mover esta tarea.' };
+    while (d !== from && occursOn(t, d) && n++ < 400) {
+      if (getState(t, d)) return { blocked: 'Ese día ya hay una hecha o descartada. Elige otro día.' };
+      var nx = addDays(d, 1);
+      moves.push({ from: d, to: nx }); d = nx;
+    }
+    return { moves: moves };
+  }
+  function applyMoves(t, moves) {
+    var os = moves.map(function (m) { return origOf(t, m.from); });
+    if (os.indexOf(null) >= 0) return false;
+    t.mv = t.mv || {};
+    moves.forEach(function (m, i) { if (m.to === os[i]) delete t.mv[os[i]]; else t.mv[os[i]] = m.to; });
+    if (!Object.keys(t.mv).length) delete t.mv;
+    return true;
+  }
+  // Quitar solo la ocurrencia que se ve en el día d (también si venía movida).
+  function removeOcc(t, d) {
+    var o = origOf(t, d);
+    if (o == null) return;
+    if (t.mv) { delete t.mv[o]; if (!Object.keys(t.mv).length) delete t.mv; }
+    t.ex = t.ex || [];
+    if (t.ex.indexOf(o) < 0) t.ex.push(o);
+  }
+  // Veces de una repetida que pasaron sin hacerse ni descartarse (sin límite de días, hasta 10 años atrás).
+  function missed(t, td) {
+    var out = [];
+    if (!t.rec || !t.date) return out;
+    var from = t.date, lim = addDays(td, -3650);
+    if (from < lim) from = lim;
+    for (var d = from; d < td; d = addDays(d, 1)) if (occursOn(t, d) && !getState(t, d)) out.push(d);
+    return out;
   }
 
   function getState(t, d) {
@@ -188,7 +241,7 @@
     diffDays: diffDays, weekday: weekday, dim: dim, mondayOf: mondayOf, quarterOf: quarterOf,
     shiftQuarter: shiftQuarter, quarterStart: quarterStart, quarterEnd: quarterEnd, goalStart: goalStart, goalEnd: goalEnd,
     quarterStats: quarterStats, occursOn: occursOn, getState: getState, setState: setState,
-    nextOccurrence: nextOccurrence, sortItems: sortItems, cmp: cmp, tasksOn: tasksOn, emptyData: emptyData,
+    origOf: origOf, planMove: planMove, applyMoves: applyMoves, removeOcc: removeOcc, missed: missed, nextOccurrence: nextOccurrence, sortItems: sortItems, cmp: cmp, tasksOn: tasksOn, emptyData: emptyData,
     uid: uid, validate: validate, load: load, save: save, streak: streak
   };
   if (typeof module !== 'undefined') module.exports = root.Core;
