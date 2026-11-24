@@ -271,7 +271,7 @@
       var day = C.addDays(monday, i);
       h += '<span class="h ' + (day === td ? 'today' : '') + '">' + DL[i] + '<br>' + C.parse(day).getDate() + '</span>';
     }
-    h += '<span class="h rkh" title="Días seguidos cumplidos">Racha</span>';
+    h += '<span></span>';
     C.SCOPES.forEach(function (s) {
       h += '<span class="name" style="--c:' + s.color + '"><i></i>' + s.name + '</span>';
       for (var j = 0; j < 7; j++) {
@@ -541,7 +541,7 @@
       '<div class="note" style="margin:0 0 10px">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>' +
       '<button class="btn block" data-a="export">Exportar copia</button>' +
       '<button class="btn block" data-a="import">Importar copia</button>' +
-      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 20</div>';
+      '<div class="note">' + last + '</div></div><div class="note" style="text-align:center">Versión 21</div>';
   }
 
   /* ---------- Cuenta y sincronización ---------- */
