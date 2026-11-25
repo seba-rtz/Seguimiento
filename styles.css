@@ -12,8 +12,11 @@ input,select{font:inherit;color:var(--text);background:var(--card2);border:1px s
 input[type=date],input[type=time]{min-height:46px}
 .hidden{display:none!important}
 
-#top{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(var(--sat) + 14px) 18px 8px;
-  display:flex;align-items:center;justify-content:space-between}
+#top{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(var(--sat) + 14px) 18px 8px 8px;
+  display:flex;align-items:center;gap:6px}
+#top .tt{flex:1;min-width:0}
+#menuBtn{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;color:var(--text)}
+#menuBtn svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 #title{margin:0;font-size:28px;font-weight:700}
 #subtitle{color:var(--muted);font-size:14px;margin-top:2px}
 #main{padding:4px 14px calc(150px + var(--sab))}
@@ -58,9 +61,9 @@ input[type=date],input[type=time]{min-height:46px}
 .chip .sw{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);margin-right:6px}
 
 /* hoja inferior */
-#sheet{position:fixed;inset:0;z-index:20}
+#sheet{position:fixed;left:0;right:0;top:0;bottom:0;z-index:20}
 #sheet .ov{position:absolute;inset:0;background:rgba(0,0,0,.55)}
-#sheet .panel{position:absolute;left:0;right:0;bottom:0;max-height:92vh;overflow:auto;background:var(--card);
+#sheet .panel{position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow:auto;background:var(--card);
   border-radius:22px 22px 0 0;padding:18px 16px calc(20px + var(--sab))}
 .panel h2{margin:0 0 12px;font-size:20px}
 .lbl{margin:14px 0 6px;color:var(--muted);font-size:13px;font-weight:600}
@@ -205,7 +208,7 @@ body.noscroll{overflow:hidden}
 .nrich ul.cl{list-style:none;padding-left:0}
 .nrich ul.cl li{position:relative;padding-left:1.9em;min-height:1.4em}
 .nrich ul.cl li::before{content:'';position:absolute;left:0;top:.2em;width:1.05em;height:1.05em;border:2px solid var(--muted);border-radius:4px;box-sizing:border-box}
-.nrich ul.cl li.done::before{content:'✓';background:var(--accent);border-color:var(--accent);color:#fff;font-size:.75em;line-height:1.15em;text-align:center;font-weight:700}
+.nrich ul.cl li.done::before{background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/82% no-repeat;border-color:var(--accent)}
 .nrich ul.cl li.done{color:var(--muted);text-decoration:line-through}
 .tk-menu .mi.se{flex-wrap:wrap;gap:6px}
 .tk-menu .mi.se>span{flex:1 1 100%}
@@ -263,3 +266,44 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .mvrow span:last-child{text-align:right}
 .mvrow b{color:var(--accent)}
 .task.late .t{color:#ff6b6b}
+
+/* v25: formulario de tarea a media pantalla, con las notas a la vista */
+#sheet .panel.tall{display:flex;flex-direction:column;min-height:min(56vh,calc(100% - 24px))}
+.panel.tall #tk-main{flex:1;display:flex;flex-direction:column;min-height:0}
+.panel.tall .tk-notesbtn{flex:1 1 0;min-height:110px;align-items:stretch;background:rgba(255,255,255,.035);border-radius:14px;padding:10px 12px;margin-top:4px;overflow:hidden;cursor:pointer}
+.panel.tall .tk-notesbtn .np{display:flex;flex-direction:column;min-height:0}
+.panel.tall .tk-notesbtn>svg{flex:none;margin-top:1px}
+.panel.tall .tk-notesbtn .npv{max-height:none;flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;-webkit-mask-image:none;mask-image:none}
+.tk-notesbtn ul.cl li{padding-top:3px;padding-bottom:3px}
+.tk-notesbtn ul.cl li::before{top:.3em}
+.panel.tall>#tk-main>.row:last-child{flex:none}
+
+/* v25: menú lateral */
+#drawer{position:fixed;inset:0;z-index:30}
+#drawer .dov{position:absolute;inset:0;background:rgba(0,0,0,.55);opacity:0;transition:opacity .2s}
+#drawer .dpanel{position:absolute;left:0;top:0;bottom:0;width:min(82vw,320px);background:#17171a;border-right:1px solid var(--line);
+  overflow-y:auto;padding:calc(var(--sat) + 18px) 10px calc(20px + var(--sab));transform:translateX(-102%);transition:transform .22s ease}
+#drawer.open .dov{opacity:1}
+#drawer.open .dpanel{transform:none}
+.dtitle{font-size:22px;font-weight:700;padding:0 10px 12px}
+.dsec{margin:16px 10px 4px;color:var(--muted);font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.dr{display:flex;align-items:center;gap:12px;width:100%;padding:11px 10px;border-radius:12px;text-align:left;font-size:16px}
+.dr.on{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.dr svg.i{width:20px;height:20px;flex:none}
+.dr span:first-of-type{flex:1;min-width:0}
+.ddot{width:12px;height:12px;border-radius:50%;flex:none;margin:0 4px}
+.dn{color:var(--muted);font-size:14px}
+.dsep{height:1px;background:var(--line);margin:14px 10px}
+.dhint{color:var(--muted);font-size:12px;padding:0 10px 0 44px;margin-top:-4px}
+/* v25: vista de ámbito con buscador y filtros */
+input.search{margin:0 0 8px;border-radius:12px}
+.seg.sm{margin:0 0 8px}
+.seg.sm button{padding:7px 0;font-size:14px}
+.chips.fl{gap:6px;margin:0 0 6px}
+.chips.fl .chip{padding:6px 11px;font-size:13.5px}
+/* v25: buzón de objetivos */
+.idea{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.idea:first-child{border-top:0}
+.idea svg{flex:none;color:var(--c)}
+.idea span:first-of-type{flex:1;min-width:0;overflow-wrap:anywhere}
+.linkrow{display:flex;align-items:center;justify-content:space-between;width:100%;background:var(--card);border-radius:14px;padding:12px 14px;margin:6px 0 2px;font-size:15.5px}
