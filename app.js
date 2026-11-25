@@ -15,8 +15,15 @@
 
   /* ---------- Google Calendar (solo lectura, vía función de Supabase) ---------- */
   var GK = 'seguimiento.gcal', GPAL = ['#6f7c99', '#c46fa8', '#3fa7b5', '#a9805a', '#8c9f4f', '#d0796a'];
-  var GDEF = [['trabajo', '#ff7b7b'], ['formaci', '#7aaed6'], ['obligaci', '#dcd75a'], ['salud', '#a2d964'], ['descanso', '#c9b0f9'], ['universidad', '#4f9dff'], ['horario', '#4f9dff']];
-  function gDef(name) { var n = String(name || '').toLowerCase(); for (var i = 0; i < GDEF.length; i++) if (n.indexOf(GDEF[i][0]) >= 0) return GDEF[i][1]; return ''; }
+  // Regla fija por NOMBRE del calendario de Google (vale para cualquier evento nuevo, sin tocar nada):
+  // si el nombre contiene el de un ámbito, se usa el color de ese ámbito (Tareas amarillo, Proyectos rojo…).
+  var GDEF = [['proyecto', 'proyectos'], ['tarea', 'tareas'], ['salud', 'salud'], ['formaci', 'formacion'], ['descanso', 'descanso'],
+    ['trabajo', '#ff7b7b'], ['obligaci', '#dcd75a'], ['universidad', '#4f9dff'], ['horario', '#4f9dff']];
+  function gDef(name) {
+    var n = String(name || '').toLowerCase();
+    for (var i = 0; i < GDEF.length; i++) if (n.indexOf(GDEF[i][0]) >= 0) { var v = GDEF[i][1]; return v.charAt(0) === '#' ? v : C.scopeById(v).color; }
+    return '';
+  }
   function gBase(ev) { var c = D.meta.gColors && D.meta.gColors[ev.calName]; return c || gDef(ev.calName) || GPAL[(ev.cal || 0) % GPAL.length]; }
   function gMute(h) { // apaga el color: lo mezcla con un tono sepia
     var n = parseInt(h.slice(1), 16), k = 0.38, S = [139, 125, 107], ch = [n >> 16, (n >> 8) & 255, n & 255];
@@ -31,7 +38,8 @@
       rows += '<label style="display:flex;align-items:center;justify-content:space-between;padding:5px 0"><span>' + esc(ev.calName) +
         '</span><input type="color" data-gcal="' + esc(ev.calName) + '" value="' + esc(gBase(ev)) + '" style="width:48px;height:32px;padding:0;border:0;background:none"></label>';
     });
-    return rows ? '<div class="note" style="margin:0 0 4px">Color de cada calendario (se muestra apagado):</div>' + rows + '<div style="height:8px"></div>' : '';
+    var reset = D.meta.gColors && Object.keys(D.meta.gColors).length ? '<button class="btn block" data-a="gcolreset" style="margin:6px 0 4px">Volver a los colores automáticos</button>' : '';
+    return rows ? '<div class="note" style="margin:0 0 4px">Color de cada calendario (se muestra apagado). Automático: si el nombre del calendario es el de un ámbito (Tareas, Proyectos, Salud, Formación, Descanso), sus eventos toman el color de ese ámbito.</div>' + rows + reset + '<div style="height:8px"></div>' : '';
   }
   var G = { events: [], from: '', to: '', at: 0, loading: false, fail: 0, err: '', by: {} };
   try { var gc = JSON.parse(localStorage.getItem(GK)); if (gc && gc.events) { G.events = gc.events; G.from = gc.from; G.to = gc.to; G.at = gc.at; } } catch (e) {}
@@ -164,12 +172,6 @@
       return Sync.rest('/rest/v1/suscripciones?endpoint=eq.' + encodeURIComponent(ep), { method: 'DELETE', prefer: 'return=minimal' });
     }).then(done, done);
   }
-  function testAviso() {
-    Sync.rest('/rest/v1/avisos', { method: 'POST', prefer: 'return=minimal', body: [{ enviar_en: new Date(Date.now() - 1000).toISOString(), titulo: 'Aviso de prueba', cuerpo: 'Si lees esto, los avisos funcionan.' }] })
-      .then(function (r) { alert(r.ok ? 'Listo. El aviso de prueba llegará en menos de un minuto.' : 'No se pudo crear el aviso (error ' + r.status + ').'); },
-        function () { alert('No se pudo crear el aviso. Revisa la conexión y que has iniciado sesión.'); });
-  }
-
   var saveWarned = false;
   function save() {
     if (!C.save(localStorage, D) && !saveWarned) {
@@ -216,14 +218,14 @@
     return 'Cada ' + (+r.n || 1) + ' ' + ({ d: 'días', w: 'semanas', m: 'meses' }[r.unit] || 'días');
   }
 
-  function taskRow(t, d, showDate, inbox, noSub) {
+  function taskRow(t, d, showDate, inbox, noSub, noScope) {
     var sc = C.scopeById(t.scope), st = C.getState(t, d || t.date);
     var dots = '';
     for (var i = 0; i < (t.priority || 0); i++) dots += '<i></i>';
     var meta = [];
     if (showDate && d) meta.push(shortDate(d));
     if (t.time) meta.push(t.end ? t.time + '–' + t.end : t.time);
-    if (!inbox) { var sb = noSub ? null : subById(t.sub); meta.push(sc.name + (sb ? ' › ' + sb.name : '')); }
+    if (!inbox) { var sb = noSub ? null : subById(t.sub); if (!noScope) meta.push(sc.name + (sb ? ' › ' + sb.name : '')); else if (sb) meta.push(sb.name); }
     if (t.rec) meta.push('↻ ' + recLabel(t.rec));
     if (t.rec && t.mv && d) { var og = C.origOf(t, d); if (og && og !== d) meta.push('movida del ' + shortDate(og)); }
     var mark = st === 'done' ? '✓' : st === 'wontdo' ? '✕' : '';
@@ -309,20 +311,45 @@
     }).join('');
   }
 
+  function tabsBuzon() {
+    var ni = (D.ideas || []).length, nt = D.tasks.filter(function (t) { return !t.deleted && !t.date && !C.getState(t); }).length;
+    return '<div class="seg"><button class="' + (ui.inbTab !== 'obj' ? 'on' : '') + '" data-a="inbtab" data-v="tareas">Tareas · ' + nt + '</button>' +
+      '<button class="' + (ui.inbTab === 'obj' ? 'on' : '') + '" data-a="inbtab" data-v="obj">Objetivos · ' + ni + '</button></div>';
+  }
+  function folder(s, n, key, body) {
+    var closed = ui.inbClosed[key];
+    return '<div class="grp" style="--c:' + s.color + '"><div class="gh" data-a="grp" data-s="' + key + '"><svg class="gico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><b>' + esc(s.name) + '</b><span class="gn">' + n +
+      '</span><span class="gch' + (closed ? ' c' : '') + '">⌄</span></div>' + (closed ? '' : '<div class="gbody">' + body + '</div>') + '</div>';
+  }
+  // Buzón de objetivos: ideas sin fecha ni estado, agrupadas por ámbito, para convertirlas después en objetivos.
+  function viewIdeas() {
+    var ideas = D.ideas || [];
+    setTop('Buzón', ideas.length === 1 ? '1 idea de objetivo' : ideas.length + ' ideas de objetivos');
+    var h = tabsBuzon();
+    if (!ideas.length) return h + '<div class="empty">Apunta aquí los objetivos que se te ocurran (pulsa +). Luego los conviertes en objetivo con sus fechas.</div>';
+    ui.inbClosed = ui.inbClosed || {};
+    C.SCOPES.forEach(function (s) {
+      var arr = ideas.filter(function (x) { return x.scope === s.id; });
+      if (!arr.length) return;
+      h += folder(s, arr.length, 'i-' + s.id, arr.map(function (x) {
+        return '<div class="idea" data-a="ideaedit" data-id="' + esc(x.id) + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span>' + esc(x.title) + '</span><span class="chev">›</span></div>';
+      }).join(''));
+    });
+    return h;
+  }
   function viewBuzon() {
+    if (ui.inbTab === 'obj') return viewIdeas();
     var items = D.tasks.filter(function (t) { return !t.deleted && !t.date && !C.getState(t); })
       .map(function (t) { return { t: t, d: null }; });
-    setTop('Buzón', items.length + ' sin fecha');
-    if (!items.length) return '<div class="empty">El buzón está vacío. Las tareas sin fecha aparecen aquí.</div>';
+    setTop('Buzón', items.length + ' tareas sin fecha');
+    var h = tabsBuzon();
+    if (!items.length) return h + '<div class="empty">El buzón está vacío. Las tareas sin fecha aparecen aquí.</div>';
     ui.inbClosed = ui.inbClosed || {};
-    var sorted = C.sortItems(items), h = '';
+    var sorted = C.sortItems(items);
     C.SCOPES.forEach(function (s) {
       var arr = sorted.filter(function (x) { return x.t.scope === s.id; });
       if (!arr.length) return;
-      var closed = ui.inbClosed[s.id];
-      h += '<div class="grp" style="--c:' + s.color + '"><div class="gh" data-a="grp" data-s="' + s.id + '"><svg class="gico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><b>' + esc(s.name) + '</b><span class="gn">' + arr.length +
-        '</span><span class="gch' + (closed ? ' c' : '') + '">⌄</span></div>' +
-        (closed ? '' : '<div class="gbody">' + subGroups(arr, s.id, function (x) { return taskRow(x.t, null, false, true); }, false) + '</div>') + '</div>';
+      h += folder(s, arr.length, s.id, subGroups(arr, s.id, function (x) { return taskRow(x.t, null, false, true); }, false));
     });
     return h;
   }
@@ -351,18 +378,57 @@
     return h || '<div class="empty">No hay tareas pendientes.</div>';
   }
 
+  /* Vista de un ámbito: TODAS sus tareas (con fecha, sin fecha, hechas…) con buscador y filtros. */
+  function ambF() { ui.af = ui.af || { q: '', st: 'pend', fd: 'all', sub: '' }; return ui.af; }
+  function plain(h) { var x = document.createElement('div'); x.innerHTML = h || ''; return x.textContent || ''; }
+  function ambItems() {
+    var f = ambF(), td = C.today(), q = f.q.trim().toLowerCase(), out = [];
+    D.tasks.forEach(function (t) {
+      if (t.deleted || t.scope !== ui.scope) return;
+      if (f.sub && (f.sub === '-' ? subById(t.sub) : t.sub !== f.sub)) return;
+      if (q && (t.title + ' ' + plain(t.notes)).toLowerCase().indexOf(q) < 0) return;
+      var d = t.date || null, st = '';
+      if (t.rec) { d = C.nextOccurrence(t, td) || t.date; }
+      else st = C.getState(t) || '';
+      if (f.fd === 'dated' && !d) return;
+      if (f.fd === 'undated' && d) return;
+      var done = !!st;
+      if (f.st === 'pend' && done) return;
+      if (f.st === 'done' && !done) return;
+      out.push({ t: t, d: d, done: done });
+    });
+    return out;
+  }
+  function ambResults() {
+    var items = ambItems(), td = C.today(), h = '';
+    var late = [], next = [], none = [], done = [];
+    items.forEach(function (x) { (x.done ? done : !x.d ? none : x.d < td ? late : next).push(x); });
+    var byDate = function (a, b) { return a.d === b.d ? C.cmp(a, b) : a.d < b.d ? -1 : 1; };
+    late.sort(byDate); next.sort(byDate); none = C.sortItems(none);
+    done.sort(function (a, b) { return (b.d || '') < (a.d || '') ? -1 : (b.d || '') > (a.d || '') ? 1 : 0; });
+    var row = function (x) { return taskRow(x.t, x.d, true, false, false, true); };
+    if (late.length) h += '<div class="sec">Atrasadas · ' + late.length + '</div>' + late.map(row).join('');
+    if (next.length) h += '<div class="sec">Con fecha · ' + next.length + '</div>' + next.map(row).join('');
+    if (none.length) h += '<div class="sec">Sin fecha · ' + none.length + '</div>' + none.map(row).join('');
+    if (done.length) h += '<div class="sec">Hechas o descartadas · ' + done.length + '</div>' + done.map(row).join('');
+    return h || '<div class="empty">' + (ambF().q ? 'No hay tareas que coincidan con «' + esc(ambF().q) + '».' : 'No hay tareas con estos filtros.') + '</div>';
+  }
+  function fchip(k, v, label, cur) { return '<button class="chip' + (cur === v ? ' on' : '') + '" data-a="af" data-k="' + k + '" data-v="' + esc(v) + '">' + label + '</button>'; }
   function viewAmbito() {
-    var sc = C.scopeById(ui.scope);
-    setTop('Por ámbito', sc.name);
-    var h = '<div class="chips" style="margin:4px 2px 12px">';
+    var sc = C.scopeById(ui.scope), f = ambF(), subs = subsOf(ui.scope);
+    var n = D.tasks.filter(function (t) { return !t.deleted && t.scope === ui.scope; }).length;
+    setTop(sc.name, n === 1 ? '1 tarea en total' : n + ' tareas en total');
+    var h = '<div class="chips" style="margin:4px 2px 10px">';
     C.SCOPES.forEach(function (s) {
       h += '<button class="chip sc ' + (s.id === ui.scope ? 'on' : '') + '" style="--c:' + s.color + '" data-a="scope" data-scope="' + s.id + '"><span class="sw"></span>' + s.name + '</button>';
     });
-    h += '</div>';
-    h += '<div class="row" style="margin:0 2px 6px"><button class="btn" data-a="subman">Editar subcategorías' + (subsOf(ui.scope).length ? ' (' + subsOf(ui.scope).length + ')' : '') + '</button></div>';
-    var items = allPending(ui.scope);
-    if (!items.length) return h + '<div class="empty">No hay tareas pendientes en este ámbito.</div>';
-    return h + subGroups(items, ui.scope, function (x) { return taskRow(x.t, x.d, true, false, true); }, true);
+    h += '</div><input id="af-q" type="search" class="search" placeholder="Buscar en ' + esc(sc.name) + ' (título y notas)…" value="' + esc(f.q) + '" autocomplete="off">';
+    h += '<div class="seg sm">' + [['pend', 'Pendientes'], ['done', 'Hechas'], ['all', 'Todas']].map(function (o) {
+      return '<button class="' + (f.st === o[0] ? 'on' : '') + '" data-a="af" data-k="st" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    h += '<div class="chips fl">' + fchip('fd', 'all', 'Con y sin fecha', f.fd) + fchip('fd', 'dated', 'Con fecha', f.fd) + fchip('fd', 'undated', 'Sin fecha', f.fd) + '</div>';
+    h += '<div class="chips fl">' + fchip('sub', '', 'Todas las subcategorías', f.sub) + subs.map(function (x) { return fchip('sub', x.id, esc(x.name), f.sub); }).join('') +
+      (subs.length ? fchip('sub', '-', 'Sin subcategoría', f.sub) : '') + '<button class="chip" data-a="subman">✎ Editar subcategorías</button></div>';
+    return h + '<div id="amb-res">' + ambResults() + '</div>';
   }
 
   function hasTasks(d) { return D.tasks.some(function (t) { return !t.deleted && C.occursOn(t, d); }); }
@@ -510,7 +576,9 @@
     act.sort(function (a, b) { return k1(a) < k1(b) ? -1 : k1(a) > k1(b) ? 1 : a.title.localeCompare(b.title, 'es'); });
     done.sort(function (a, b) { return k2(a) < k2(b) ? 1 : k2(a) > k2(b) ? -1 : 0; });
     setTop('Objetivos', act.length === 1 ? '1 objetivo activo' : act.length + ' objetivos activos');
-    var h = '<div class="sec">Activos</div>';
+    var ni = (D.ideas || []).length;
+    var h = '<button class="linkrow" data-a="dnav" data-view="buzon" data-tab="obj"><span>Buzón de objetivos</span><span class="mv">' + (ni === 1 ? '1 idea' : ni + ' ideas') + ' ›</span></button>';
+    h += '<div class="sec">Activos</div>';
     h += act.length ? act.map(function (g) { return goalRow(g, td); }).join('') : '<div class="empty">No hay objetivos activos. Pulsa + para añadir uno.</div>';
     if (done.length) h += '<div class="sec">Cumplidos</div>' + done.map(function (g) { return goalRow(g, td); }).join('');
     return h + '<div class="sec">Cumplimiento del trimestre</div>' + quarterCard(td);
@@ -535,7 +603,7 @@
     next: 'M5 12h14M13 6l6 6-6 6', list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
     cal: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5', sync: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5', bell: 'M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',
-    send: 'M4 12l16-8-6 16-3-7z', down: 'M12 4v11M7 10l5 5 5-5M5 20h14', up: 'M12 15V4M7 9l5-5 5 5M5 20h14', out: 'M10 5H5v14h5M15 8l4 4-4 4M19 12H9', cloud: 'M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z'
+    down: 'M12 4v11M7 10l5 5 5-5M5 20h14', up: 'M12 15V4M7 9l5-5 5 5M5 20h14', out: 'M10 5H5v14h5M15 8l4 4-4 4M19 12H9', cloud: 'M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z'
   };
   // Una fila de «Más»: icono de color, título, texto pequeño opcional, valor y flecha (o interruptor).
   function mrow(o) {
@@ -556,28 +624,22 @@
       '<button class="ibtn" data-a="syncnow" aria-label="Sincronizar ahora"><svg class="i" viewBox="0 0 24 24"><path d="' + MI.sync + '"/></svg></button></div>';
   }
   function viewMas() {
-    setTop('Más', '');
-    var email = !!(window.Sync && Sync.info().email), pend = allPending().length, bin = D.tasks.filter(function (t) { return t.deleted; }).length;
+    setTop('Ajustes', '');
+    var email = !!(window.Sync && Sync.info().email);
     var h = (window.Sync ? profileCard() : '');
-    h += '<div class="sec">Tus listas</div><div class="card set">' +
-      mrow({ a: 'nav', view: 'proximos', i: 'next', c: '#4a9bff', t: 'Próximos 7 días' }) +
-      mrow({ a: 'nav', view: 'todo', i: 'list', c: '#34c759', t: 'Todo', val: pend }) +
-      mrow({ a: 'nav', view: 'ambito', i: 'folder', c: '#f5c518', t: 'Por ámbito' }) +
-      mrow({ a: 'nav', view: 'papelera', i: 'trash', c: '#ff6b6b', t: 'Papelera', val: bin || null }) + '</div>';
     if (email) {
       var gev = G.err ? esc(G.err) : G.at ? G.events.length + ' eventos · ' + hm(new Date(G.at).getHours() * 60 + new Date(G.at).getMinutes()) : 'Pendiente de cargar';
       h += '<div class="sec">Calendarios y avisos</div><div class="card set">' +
         mrow({ a: 'cals', i: 'cal', c: '#a56bff', t: 'Calendarios', sub: 'Solo lectura, en «Día por horas»', val: calUrls().length + (D.meta.uniUrl ? 1 : 0) }) +
         mrow({ a: 'gcalnow', act: 1, i: 'sync', c: '#4a9bff', t: 'Actualizar eventos', sub: gev + (G.warn && G.warn.length ? ' · ' + esc(G.warn.join(' · ')) : '') }) +
-        mrow({ a: D.meta.avisosOn ? 'avisosoff' : 'avisoson', i: 'bell', c: '#ff7a21', t: 'Avisos', sub: 'A la hora exacta de las tareas con hora', tog: !!D.meta.avisosOn }) +
-        (D.meta.avisosOn ? mrow({ a: 'avisotest', act: 1, i: 'send', c: '#ff7a21', t: 'Probar aviso ahora' }) : '') + '</div>';
+        mrow({ a: D.meta.avisosOn ? 'avisosoff' : 'avisoson', i: 'bell', c: '#ff7a21', t: 'Avisos', sub: 'A la hora exacta de las tareas con hora', tog: !!D.meta.avisosOn }) + '</div>';
     }
     h += '<div class="sec">Copia de seguridad</div><div class="card set">' +
       mrow({ a: 'export', act: 1, i: 'down', c: '#34c759', t: 'Exportar copia', sub: D.meta.lastBackup ? 'Última copia: ' + longDate(D.meta.lastBackup) : 'Aún no has hecho ninguna copia' }) +
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 24</div>';
+    return h + '<div class="ver">Versión 25</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -641,9 +703,45 @@
       '<div class="actions"><button class="btn primary" data-a="dologin">Entrar</button><button class="btn" data-a="close">Cancelar</button></div>');
   }
 
+  /* ---------- Menú lateral (botón arriba a la izquierda) ---------- */
+  function drow(o) {
+    var on = o.on ? ' on' : '';
+    return '<button class="dr' + on + '" data-a="dnav" data-view="' + o.v + '"' + (o.s ? ' data-scope="' + o.s + '"' : '') + (o.tab ? ' data-tab="' + o.tab + '"' : '') + '>' +
+      (o.c ? '<i class="ddot" style="background:' + o.c + '"></i>' : '<svg class="i" viewBox="0 0 24 24"><path d="' + o.i + '"/></svg>') +
+      '<span>' + o.t + '</span>' + (o.n ? '<span class="dn">' + o.n + '</span>' : '') + '</button>';
+  }
+  function openDrawer() {
+    var td = C.today(), v = ui.view;
+    var pendHoy = C.tasksOn(D, td).filter(function (x) { return !C.getState(x.t, x.d); }).length;
+    var inb = D.tasks.filter(function (t) { return !t.deleted && !t.date && !C.getState(t); }).length, ideas = (D.ideas || []).length;
+    var bin = D.tasks.filter(function (t) { return t.deleted; }).length;
+    var h = '<div class="dov" data-a="dclose"></div><div class="dpanel"><div class="dtitle">Seguimiento</div>' +
+      drow({ v: 'hoy', i: 'M5 12l5 5 9-10', t: 'Hoy', n: pendHoy, on: v === 'hoy' }) +
+      drow({ v: 'calendario', i: MI.cal, t: 'Calendario', on: v === 'calendario' }) +
+      drow({ v: 'objetivos', i: 'M12 4a8 8 0 1 0 .01 0M12 9a3 3 0 1 0 .01 0', t: 'Objetivos', on: v === 'objetivos' }) +
+      '<div class="dsec">Buzón</div>' +
+      drow({ v: 'buzon', tab: 'tareas', i: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5', t: 'Tareas sin fecha', n: inb, on: v === 'buzon' && ui.inbTab !== 'obj' }) +
+      drow({ v: 'buzon', tab: 'obj', i: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5', t: 'Ideas de objetivos', n: ideas, on: v === 'buzon' && ui.inbTab === 'obj' }) +
+      '<div class="dsec">Ámbitos</div>';
+    C.SCOPES.forEach(function (s) {
+      var n = D.tasks.filter(function (t) { return !t.deleted && t.scope === s.id && (t.rec || !C.getState(t)); }).length;
+      h += drow({ v: 'ambito', s: s.id, c: s.color, t: s.name, n: n, on: v === 'ambito' && ui.scope === s.id });
+    });
+    h += '<div class="dsec">Listas</div>' +
+      drow({ v: 'proximos', i: MI.next, t: 'Próximos 7 días', on: v === 'proximos' }) +
+      drow({ v: 'todo', i: MI.list, t: 'Todo lo pendiente', n: allPending().length, on: v === 'todo' }) +
+      drow({ v: 'papelera', i: MI.trash, t: 'Papelera', n: bin, on: v === 'papelera' }) +
+      '<div class="dsep"></div>' +
+      drow({ v: 'mas', i: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4', t: 'Ajustes', on: v === 'mas' }) +
+      '<div class="dhint">Cuenta, calendarios, avisos y copia de seguridad</div></div>';
+    var el = $('drawer'); el.innerHTML = h; el.classList.remove('hidden');
+    requestAnimationFrame(function () { el.classList.add('open'); });
+  }
+  function closeDrawer() { var el = $('drawer'); el.classList.remove('open'); el.classList.add('hidden'); el.innerHTML = ''; }
+
   var VIEWS = { hoy: viewHoy, buzon: viewBuzon, proximos: viewProximos, todo: viewTodo, ambito: viewAmbito,
     calendario: viewCal, objetivos: viewObj, papelera: viewPapelera, mas: viewMas };
-  var NAVMAP = { proximos: 'mas', todo: 'mas', ambito: 'mas', papelera: 'mas' };
+  var NAVMAP = {};
 
   function setTop(t, s) { $('title').textContent = t; $('subtitle').textContent = s || ''; }
   function render() {
@@ -659,12 +757,32 @@
   function go(v) { ui.view = v; ui.tlScroll = true; render(); window.scrollTo(0, 0); }
 
   /* ---------- Hoja inferior ---------- */
-  function openSheet(html) {
-    var s = $('sheet');
-    s.innerHTML = '<div class="ov" data-a="close"></div><div class="panel">' + html + '</div>';
-    s.classList.remove('hidden');
+  // La hoja se ajusta a la parte visible de la pantalla (si sale el teclado del iPhone, queda encima de él).
+  function positionSheet() {
+    var s = $('sheet'), vv = window.visualViewport;
+    if (!s || s.classList.contains('hidden') || !vv) return;
+    s.style.top = vv.offsetTop + 'px'; s.style.height = vv.height + 'px'; s.style.bottom = 'auto';
   }
-  function closeSheet() { closeNotes(true); $('sheet').classList.add('hidden'); $('sheet').innerHTML = ''; form = null; }
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', positionSheet); window.visualViewport.addEventListener('scroll', positionSheet); }
+  function openSheet(html, cls) {
+    var s = $('sheet');
+    s.innerHTML = '<div class="ov" data-a="close"></div><div class="panel' + (cls ? ' ' + cls : '') + '">' + html + '</div>';
+    s.classList.remove('hidden');
+    positionSheet();
+  }
+  function closeSheet() { closeNotes(true); var s = $('sheet'); s.classList.add('hidden'); s.innerHTML = ''; s.style.top = s.style.height = s.style.bottom = ''; form = null; }
+
+  // Marcar / desmarcar una casilla de las notas desde la vista previa del formulario, sin abrir el editor.
+  function togglePreviewCheck(li) {
+    var all = [].slice.call($('tk-notesbtn').querySelectorAll('ul.cl > li')), i = all.indexOf(li);
+    if (i < 0) return;
+    var box = document.createElement('div'); box.innerHTML = notesHtml(form.notes);
+    var tgt = box.querySelectorAll('ul.cl > li')[i]; if (!tgt) return;
+    tgt.classList.toggle('done'); li.classList.toggle('done');
+    form.notes = notesHtml(box.innerHTML);
+    var t = form.id ? findTask(form.id) : null;
+    if (t) { if (form.notes) t.notes = form.notes; else delete t.notes; save(); }
+  }
 
   function chipsScope(sel) {
     return C.SCOPES.map(function (s) {
@@ -757,7 +875,9 @@
     b.classList.toggle('late', !!(form.date && form.date < C.today() && !form.recType));
     var nb = $('tk-notesbtn'), nh = notesHtml(form.notes);
     nb.classList.toggle('has', !!nh);
-    nb.innerHTML = IC.note + (nh ? '<div class="np"><div class="npl">Notas</div><div class="nrich npv">' + nh + '</div></div>' : '<span class="nt">Notas</span>');
+    var keep = nb.querySelector('.npv'), sc0 = keep ? keep.scrollTop : 0;
+    nb.innerHTML = IC.note + (nh ? '<div class="np"><div class="npl">Notas · toca el texto para editar</div><div class="nrich npv">' + nh + '</div></div>' : '<span class="nt">Notas</span>');
+    if (nb.querySelector('.npv')) nb.querySelector('.npv').scrollTop = sc0;
   }
 
   function menuItem(a, v, label, on, cls, pre) {
@@ -844,9 +964,9 @@
       '<div class="tk-menu hidden" id="tk-menu"></div>' +
       '<button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
       '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
-      '<button class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes"></button>' +
+      '<div class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes" role="button" tabindex="0"></div>' +
       '<div class="row" style="margin-top:12px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div>';
-    openSheet(h);
+    openSheet(h, 'tall');
     refreshTop();
     if (!t) setTimeout(function () { var el = $('f-title'); if (el) el.focus(); }, 250);
   }
@@ -915,12 +1035,33 @@
     save(); closeSheet(); render();
   }
 
-  function openGoal(id) {
+  function openIdea(id) {
+    var x = id ? (D.ideas || []).filter(function (i) { return i.id === id; })[0] : null;
+    form = { ideaId: id, scope: x ? x.scope : (ui.view === 'ambito' ? ui.scope : ui.lastScope) };
+    openSheet('<h2>' + (x ? 'Idea de objetivo' : 'Nueva idea de objetivo') + '</h2>' +
+      '<input id="i-title" placeholder="¿Qué objetivo se te ha ocurrido?" value="' + (x ? esc(x.title) : '') + '" autocomplete="off">' +
+      '<div class="lbl">Ámbito</div><div class="chips" id="f-scope">' + chipsScope(form.scope) + '</div>' +
+      '<div class="note">Se queda en el buzón sin fechas. Cuando lo tengas claro, conviértelo en objetivo.</div>' +
+      '<div class="actions">' + (x ? '<button class="btn primary" data-a="ideaconv">Convertir en objetivo</button><button class="btn" data-a="ideasave">Guardar</button>' : '<button class="btn primary" data-a="ideasave">Añadir al buzón</button>') +
+      (x ? '<button class="btn danger" data-a="ideadel">Eliminar idea</button>' : '') + '<button class="btn" data-a="close">Cancelar</button></div>');
+    if (!x) setTimeout(function () { var el = $('i-title'); if (el) el.focus(); }, 250);
+  }
+  function saveIdea() {
+    var title = $('i-title').value.trim();
+    if (!title) { $('i-title').focus(); return null; }
+    D.ideas = D.ideas || [];
+    var x = form.ideaId ? D.ideas.filter(function (i) { return i.id === form.ideaId; })[0] : null;
+    if (!x) { x = { id: C.uid(), created: Date.now() }; D.ideas.push(x); }
+    x.title = title; x.scope = form.scope; ui.lastScope = form.scope;
+    save(); return x;
+  }
+
+  function openGoal(id, preset) {
     var g = id ? D.goals.filter(function (x) { return x.id === id; })[0] : null;
-    form = { goalId: id, scope: g ? g.scope : (ui.view === 'ambito' ? ui.scope : ui.lastScope), status: g ? g.status : 'pendiente' };
+    form = { goalId: id, scope: g ? g.scope : preset ? preset.scope : (ui.view === 'ambito' ? ui.scope : ui.lastScope), status: g ? g.status : 'pendiente', ideaId: preset ? preset.ideaId : null };
     var start = g ? (C.goalStart(g) || C.today()) : C.today(), end = g ? (C.goalEnd(g) || '') : '';
     var h = '<h2>' + (g ? 'Editar objetivo' : 'Nuevo objetivo') + '</h2>' +
-      '<input id="g-title" placeholder="¿Qué quieres lograr?" value="' + (g ? esc(g.title) : '') + '" autocomplete="off">' +
+      '<input id="g-title" placeholder="¿Qué quieres lograr?" value="' + (g ? esc(g.title) : preset ? esc(preset.title) : '') + '" autocomplete="off">' +
       '<div class="lbl">Ámbito</div><div class="chips" id="f-scope">' + chipsScope(form.scope) + '</div>' +
       '<div class="lbl">Empieza</div><input id="g-start" type="date" value="' + esc(start) + '">' +
       '<div class="lbl">Fecha límite (opcional)</div><input id="g-end" type="date" value="' + esc(end) + '">' +
@@ -931,7 +1072,7 @@
       }).join('') + '</div><div class="actions"><button class="btn primary" data-a="savegoal">' + (g ? 'Guardar' : 'Añadir') + '</button>' +
       (g ? '<button class="btn danger" data-a="delgoal">Eliminar objetivo</button>' : '') + '<button class="btn" data-a="close">Cancelar</button></div>';
     openSheet(h);
-    if (!g) setTimeout(function () { var el = $('g-title'); if (el) el.focus(); }, 250);
+    if (!g && !preset) setTimeout(function () { var el = $('g-title'); if (el) el.focus(); }, 250);
   }
   function saveGoal() {
     var title = $('g-title').value.trim();
@@ -942,6 +1083,7 @@
     if (!g) { g = { id: C.uid() }; D.goals.push(g); }
     g.title = title; g.scope = form.scope; g.start = start; g.end = end; g.quarter = C.quarterOf(start); g.status = form.status;
     ui.lastScope = form.scope;
+    if (form.ideaId) { D.ideas = (D.ideas || []).filter(function (i) { return i.id !== form.ideaId; }); ui.view = 'objetivos'; }
     save(); closeSheet(); render();
   }
 
@@ -1071,16 +1213,32 @@
 
   document.addEventListener('click', function (e) {
     if (Date.now() < noClickUntil && e.target.closest('.task, .ev')) return;
+    var cli = e.target.closest && e.target.closest('#tk-notesbtn ul.cl > li');
+    if (cli && form && e.clientX - cli.getBoundingClientRect().left <= 34) { togglePreviewCheck(cli); return; }
     var el = e.target.closest('[data-a]');
     if (!el) return;
     var a = el.dataset.a, id = el.dataset.id, d = el.dataset.date, v = el.dataset.v, t;
     switch (a) {
       case 'nav': closeSheet(); go(el.dataset.view); break;
-      case 'fab': ui.view === 'objetivos' ? openGoal() : openTask(); break;
+      case 'fab': ui.view === 'objetivos' ? openGoal() : ui.view === 'buzon' && ui.inbTab === 'obj' ? openIdea() : openTask(); break;
+      case 'menu': openDrawer(); break;
+      case 'dclose': closeDrawer(); break;
+      case 'dnav':
+        closeDrawer(); closeSheet();
+        if (el.dataset.scope) { if (ui.scope !== el.dataset.scope) ui.af = null; ui.scope = el.dataset.scope; }
+        if (el.dataset.tab) ui.inbTab = el.dataset.tab;
+        go(el.dataset.view); break;
+      case 'inbtab': ui.inbTab = v; render(); break;
+      case 'af': ambF()[el.dataset.k] = v; render(); break;
+      case 'ideaedit': openIdea(id); break;
+      case 'ideasave': if (saveIdea()) { closeSheet(); render(); } break;
+      case 'ideaconv': var ix = saveIdea(); if (ix) openGoal(null, { title: ix.title, scope: ix.scope, ideaId: ix.id }); break;
+      case 'ideadel':
+        if (confirm('¿Eliminar esta idea de objetivo?')) { D.ideas = (D.ideas || []).filter(function (i) { return i.id !== form.ideaId; }); save(); closeSheet(); render(); } break;
       case 'close': closeSheet(); break;
       case 'toggle': t = findTask(id); toggleState(t, d || t.date); break;
       case 'edit': openTask(id, d); break;
-      case 'scope': ui.scope = el.dataset.scope; render(); break;
+      case 'scope': if (ui.scope !== el.dataset.scope) ui.af = null; ui.scope = el.dataset.scope; render(); break;
       case 'grp': ui.inbClosed = ui.inbClosed || {}; ui.inbClosed[el.dataset.s] = !ui.inbClosed[el.dataset.s]; render(); break;
       case 'wk': ui.weekOff += +el.dataset.n; render(); break;
       case 'cell':
@@ -1129,9 +1287,9 @@
       case 'gcalnow': ensureG(true); break;
       case 'avisoson': enableAvisos(); break;
       case 'avisosoff': disableAvisos(); break;
-      case 'avisotest': testAviso(); break;
       case 'cals': openCals(); break;
       case 'calnew': case 'calchg': case 'caldel': calAction(a, id); break;
+      case 'gcolreset': D.meta.gColors = {}; save(); render(); openCals(); break;
       /* formulario de tarea */
       case 'tkmenu': form.menu = form.menu === v ? null : v; drawMenu(); break;
       case 'fsub': form.sub = v; form.menu = null; drawMenu(); refreshTop(); break;
@@ -1335,10 +1493,12 @@
     clearTimeout(notesT); notesT = setTimeout(flushNotes, 600);
   }
   document.addEventListener('input', function (e) {
+    if (e.target.id === 'af-q') { ambF().q = e.target.value; var r = $('amb-res'); if (r) r.innerHTML = ambResults(); return; }
     if (e.target.id === 'f-notes') notesChanged();
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target.id === 'f-title' && form) { e.preventDefault(); saveTask(); }
+    if (e.key === 'Enter' && e.target.id === 'i-title' && form) { e.preventDefault(); if (saveIdea()) { closeSheet(); render(); } }
   });
   $('importFile').addEventListener('change', function (e) {
     if (e.target.files[0]) importData(e.target.files[0]);
