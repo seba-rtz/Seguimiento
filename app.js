@@ -275,9 +275,9 @@
   }
 
   /* ---------- Agrupar y ordenar (cada lista recuerda el suyo; lo que arrastras manda) ---------- */
-  var VS_DEF = { hoy: { g: 'none', o: 'auto' }, proximos: { g: 'fecha', o: 'auto' }, todo: { g: 'fecha', o: 'auto' }, buzon: { o: 'auto' }, ambito: { o: 'auto' } };
-  var VS_G = { hoy: ['none', 'ambito', 'prioridad'], proximos: ['fecha', 'ambito', 'prioridad', 'none'], todo: ['fecha', 'ambito', 'prioridad', 'none'] };
-  var G_NAME = { none: 'Ninguno', fecha: 'Fecha', ambito: 'Ámbito', prioridad: 'Prioridad' };
+  var VS_DEF = { hoy: { g: 'none', o: 'auto' }, proximos: { g: 'fecha', o: 'auto' }, todo: { g: 'fecha', o: 'auto' }, buzon: { o: 'auto' }, ambito: { g: 'sub', o: 'auto' } };
+  var VS_G = { hoy: ['none', 'ambito', 'prioridad'], proximos: ['fecha', 'ambito', 'prioridad', 'none'], todo: ['fecha', 'ambito', 'prioridad', 'none'], ambito: ['sub', 'estado'] };
+  var G_NAME = { none: 'Ninguno', fecha: 'Fecha', ambito: 'Ámbito', prioridad: 'Prioridad', sub: 'Subcategoría', estado: 'Atrasadas / con fecha / sin fecha' };
   var O_LIST = [['auto', 'Automático'], ['prioridad', 'Prioridad'], ['hora', 'Fecha y hora'], ['titulo', 'Título'], ['creacion', 'Más nuevas']];
   function vs(k) {
     D.meta.vs = D.meta.vs || {};
@@ -332,7 +332,7 @@
     var v = vs(k), gs = VS_G[k], h = '<h2>Agrupar y ordenar</h2>';
     if (gs) h += '<div class="lbl">Agrupar por</div><div class="chips">' + gs.map(function (g) { return '<button class="chip ' + (v.g === g ? 'on' : '') + '" data-a="vsset" data-k="g" data-v="' + g + '">' + G_NAME[g] + '</button>'; }).join('') + '</div>';
     h += '<div class="lbl">Ordenar por</div><div class="chips">' + O_LIST.map(function (o) { return '<button class="chip ' + (v.o === o[0] ? 'on' : '') + '" data-a="vsset" data-k="o" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
-    if (k !== 'buzon' && k !== 'todo') h += '<button class="mr" data-a="vsset" data-k="hd" data-v="' + (v.hd ? '' : '1') + '" role="switch" aria-checked="' + v.hd + '" style="margin-top:14px"><span class="mt"><b>Ocultar completadas</b><small>Si no, salen al final de la lista</small></span><span class="tog' + (v.hd ? ' on' : '') + '"><i></i></span></button>';
+    if (k !== 'buzon' && k !== 'todo' && k !== 'ambito') h += '<button class="mr" data-a="vsset" data-k="hd" data-v="' + (v.hd ? '' : '1') + '" role="switch" aria-checked="' + v.hd + '" style="margin-top:14px"><span class="mt"><b>Ocultar completadas</b><small>Si no, salen al final de la lista</small></span><span class="tog' + (v.hd ? ' on' : '') + '"><i></i></span></button>';
     h += '<div class="note" style="margin-top:12px">Lo que muevas a mano (mantén pulsada una tarea y arrástrala) va siempre por delante de este orden.</div>' +
       '<div class="actions"><button class="btn" data-a="vsreset">Quitar mi orden manual de esta lista</button><button class="btn primary" data-a="close">Listo</button></div>';
     ui.vsk = k; openSheet(h);
@@ -526,6 +526,20 @@
     if (ao !== 'auto') { late = sortList(late, ao); next = sortList(next, ao); none = sortList(none, ao); }
     done.sort(function (a, b) { return (b.d || '') < (a.d || '') ? -1 : (b.d || '') > (a.d || '') ? 1 : 0; });
     var row = function (x) { return taskRow(x.t, x.d, true, false, false, true); };
+    // Agrupada por subcategoría (todas, también las vacías), con las hechas al final de cada una
+    var subs = subsOf(ui.scope);
+    if (vs('ambito').g === 'sub' && subs.length && !ambF().sub) {
+      var ordered = late.concat(next, none, done), rowS = function (x) { return taskRow(x.t, x.d, true, false, true, true); }, hs = '';
+      subs.forEach(function (sb) {
+        var its = ordered.filter(function (x) { return x.t.sub === sb.id; });
+        if (sb.archived && !its.length) return;
+        hs += subBlock(ui.scope, sb, its, rowS);
+      });
+      var loose = ordered.filter(function (x) { var sb = subById(x.t.sub); return !sb || sb.scope !== ui.scope; });
+      if (loose.length) hs += subBlock(ui.scope, null, loose, rowS);
+      return '<div class="grp amb" style="--c:' + C.scopeById(ui.scope).color + '"><div class="gbody">' + hs + '</div></div>' +
+        (ambF().q && !items.length ? '<div class="empty">No hay tareas que coincidan con «' + esc(ambF().q) + '».</div>' : '');
+    }
     if (late.length) h += '<div class="sec">Atrasadas · ' + late.length + '</div>' + late.map(row).join('');
     if (next.length) h += '<div class="sec">Con fecha · ' + next.length + '</div>' + next.map(row).join('');
     if (none.length) h += '<div class="sec">Sin fecha · ' + none.length + '</div>' + none.map(row).join('');
@@ -545,8 +559,10 @@
     h += '<div class="seg sm">' + [['pend', 'Pendientes'], ['done', 'Hechas'], ['all', 'Todas']].map(function (o) {
       return '<button class="' + (f.st === o[0] ? 'on' : '') + '" data-a="af" data-k="st" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
     h += '<div class="chips fl">' + fchip('fd', 'all', 'Con y sin fecha', f.fd) + fchip('fd', 'dated', 'Con fecha', f.fd) + fchip('fd', 'undated', 'Sin fecha', f.fd) + '</div>';
-    h += '<div class="chips fl">' + fchip('sub', '', 'Todas las subcategorías', f.sub) + subs.map(function (x) { return fchip('sub', x.id, esc(x.name), f.sub); }).join('') +
-      (subs.length ? fchip('sub', '-', 'Sin subcategoría', f.sub) : '') + '<button class="chip" data-a="subman">✎ Editar subcategorías</button></div>';
+    if (vs('ambito').g === 'sub' && subs.length) f.sub = '';
+    if (vs('ambito').g === 'sub' && subs.length) h += '<div class="chips fl"><button class="chip" data-a="subman" data-v="' + ui.scope + '">✎ Editar subcategorías</button></div>';
+    else h += '<div class="chips fl">' + fchip('sub', '', 'Todas las subcategorías', f.sub) + subs.map(function (x) { return fchip('sub', x.id, esc(x.name), f.sub); }).join('') +
+      (subs.length ? fchip('sub', '-', 'Sin subcategoría', f.sub) : '') + '<button class="chip" data-a="subman" data-v="' + ui.scope + '">✎ Editar subcategorías</button></div>';
     return h + '<div id="amb-res">' + ambResults() + '</div>';
   }
 
@@ -783,7 +799,7 @@
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 28</div>';
+    return h + '<div class="ver">Versión 29</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -1233,23 +1249,9 @@
     }).join('');
   }
 
-  function openSubs() {
-    var sc = C.scopeById(ui.scope), subs = subsOf(ui.scope);
-    var h = '<h2>Subcategorías · ' + esc(sc.name) + '</h2>' +
-      '<div class="note" style="margin:0 0 10px">Archivar una subcategoría la oculta al crear tareas nuevas, pero conserva las tareas que ya la tienen. Borrarla no borra sus tareas: pasan a «Sin subcategoría».</div>';
-    if (!subs.length) h += '<div class="empty" style="padding:14px 10px">Aún no hay subcategorías en este ámbito.</div>';
-    subs.forEach(function (x) {
-      var n = D.tasks.filter(function (t) { return !t.deleted && t.sub === x.id; }).length;
-      h += '<div class="card" style="border-left:5px solid ' + sc.color + '"><div>' + esc(x.name) + (x.archived ? ' (archivada)' : '') + '</div><div class="note" style="margin:2px 0 10px">' + n + ' tareas</div>' +
-        '<div class="row"><button class="btn" data-a="subren" data-id="' + esc(x.id) + '">Renombrar</button><button class="btn" data-a="subarch" data-id="' + esc(x.id) + '">' + (x.archived ? 'Reactivar' : 'Archivar') +
-        '</button><button class="btn danger" data-a="subdel" data-id="' + esc(x.id) + '">Borrar</button></div></div>';
-    });
-    h += '<div class="actions"><button class="btn primary" data-a="subadd">＋ Nueva subcategoría</button><button class="btn" data-a="close">Cerrar</button></div>';
-    openSheet(h);
-  }
   function subAction(a, id) {
     var x = subById(id);
-    if (a === 'subadd') { addSub(ui.scope, prompt('Nombre de la nueva subcategoría')); }
+    if (a === 'subadd') { addSub(ui.subScope || ui.scope, prompt('Nombre de la nueva subcategoría')); }
     else if (a === 'subren' && x) { var nn = String(prompt('Nuevo nombre', x.name) || '').trim().slice(0, 40); if (nn) { x.name = nn; save(); } }
     else if (a === 'subarch' && x) { x.archived = !x.archived; save(); }
     else if (a === 'subdel' && x) {
@@ -1259,23 +1261,6 @@
       D.meta.subs = D.meta.subs.filter(function (y) { return y.id !== x.id; }); save();
     }
     render(); openSubs();
-  }
-
-  // Editar subcategorías desde el propio formulario de tarea (sin cerrarlo).
-  function formSubAction(a, id) {
-    var x = subById(id); if (!x || !form) return;
-    if (a === 'fsubren') { var nn = String(prompt('Nuevo nombre', x.name) || '').trim().slice(0, 40); if (nn) { x.name = nn; save(); } }
-    else if (a === 'fsubarch') { x.archived = !x.archived; save(); }
-    else if (a === 'fsubdel') {
-      var n = D.tasks.filter(function (t) { return t.sub === x.id; }).length;
-      if (!confirm('¿Borrar la subcategoría «' + x.name + '»? ' + (n ? 'Sus ' + n + ' tareas no se borran: pasan a «Sin subcategoría».' : ''))) return;
-      D.tasks.forEach(function (t) { if (t.sub === x.id) t.sub = null; });
-      D.meta.subs = D.meta.subs.filter(function (y) { return y.id !== x.id; });
-      if (form.sub === x.id) form.sub = null;
-      save();
-    }
-    if (!subsOf(form.scope).length) form.menu = 'sub';
-    drawMenu(); refreshTop();
   }
 
   // Poner en un día una tarea del buzón, sin abrirla
@@ -1330,7 +1315,7 @@
     var qs = $('q-time'), qe = $('q-end');
     if (document.activeElement !== qs) qs.value = form.time || '';
     if (document.activeElement !== qe) qe.value = form.end || '';
-    $('tc-s').querySelector('.tv').textContent = form.time || 'Hora';
+    $('tc-s').querySelector('.tv').textContent = form.time || 'Añadir';
     $('tc-s').classList.toggle('dim', !form.time);
     $('tc-e').querySelector('.tv').textContent = form.end ? '– ' + form.end : '– Fin';
     $('tc-e').classList.toggle('dim', !form.end);
@@ -1339,63 +1324,86 @@
     $('tc-x').classList.toggle('hidden', !form.time);
   }
 
-  function refreshTop() {
+  // Formulario de tarea: cabecera (Cancelar · Guardar), título, notas y una lista de filas «nombre → valor».
+  // Cada fila se despliega debajo al tocarla (solo una abierta a la vez). Referencias: Recordatorios de iOS, Todoist (Proyecto › Sección) y Things.
+  var FI = {
+    where: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    date: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+    time: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    rec: '<svg viewBox="0 0 24 24"><path d="M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4"/></svg>',
+    rem: '<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0"/></svg>',
+    prio: '<svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
+    tag: '<svg viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/></svg>',
+    play: '<svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>',
+    x: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>',
+    move: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M10 15h6M13 12l3 3-3 3"/></svg>',
+    trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+    eye: '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+    eyeoff: '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C3.9 8.4 2 12 2 12s4 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'
+  };
+  var PRIOS = [[0, 'Ninguna', '#8d8d96'], [1, 'Baja', '#4a9bff'], [2, 'Media', '#f5c518'], [3, 'Alta', '#ff4d4d']];
+  function frow(k, label, valueHtml, open, extraCls) {
+    return '<button class="frw' + (open ? ' open' : '') + (extraCls ? ' ' + extraCls : '') + '" data-a="frow" data-v="' + k + '"><span class="fic">' + FI[k] + '</span><span class="fl">' + label + '</span>' +
+      '<span class="fv" id="fv-' + k + '">' + valueHtml + '</span><span class="fch">›</span></button>';
+  }
+  function whereText() {
     var sc = C.scopeById(form.scope), sb = subById(form.sub);
-    $('tp-scope').innerHTML = '<i class="sw" style="background:' + sc.color + '"></i>' + esc(sc.name) + '<span class="ch">▾</span>';
-    $('tp-sub').innerHTML = (sb ? esc(sb.name) : 'Subcategoría') + '<span class="ch">▾</span>';
-    $('tp-sub').classList.toggle('dim', !sb);
-    $('tp-prio').innerHTML = IC.flag + (form.priority ? '<b>' + '•'.repeat(form.priority) + '</b>' : '') + '<span class="ch">▾</span>';
-    $('tp-prio').classList.toggle('dim', !form.priority);
-    var parts = [form.date ? dayWord(form.date) : 'Sin fecha'];
-    var rl = recLabel(formRec());
-    if (rl) parts.push('↻ ' + rl);
-    var nr = remsOf(form.rem, !!form.time).length;
-    if (nr && (form.date || form.recType)) parts.push('🔔' + (nr > 1 ? ' ' + nr : ''));
-    var b = $('tk-datebtn');
-    b.innerHTML = IC.cal + '<span>' + esc(parts.join(' · ')) + '</span><span class="ch">' + (form.dateOpen ? '▴' : '▾') + '</span>';
-    b.classList.toggle('late', !!(form.date && form.date < C.today() && !form.recType));
+    return '<i class="sw" style="background:' + sc.color + '"></i>' + esc(sc.name) + (sb ? '<span class="fsep">›</span>' + esc(sb.name) : '');
+  }
+  function dateText() {
+    if (!form.date) return '<span class="dim">Sin fecha · buzón</span>';
+    var late = form.date < C.today() && !form.recType;
+    return '<span' + (late ? ' class="late"' : '') + '>' + esc(dayWord(form.date)) + (['Hoy', 'Mañana', 'Ayer'].indexOf(dayWord(form.date)) >= 0 ? ' · ' + esc(dayWordAbs(form.date)) : '') + '</span>';
+  }
+  // Pinta (o actualiza) todas las filas. La de la hora no se rehace para no cerrar el selector del iPhone.
+  function refreshTop() {
+    if (!form || !$('tk-rows')) return;
+    var o = form.open;
+    ['where', 'date', 'rec', 'rem'].forEach(function (k) {
+      var r = document.querySelector('.frw[data-v="' + k + '"]'); if (r) r.classList.toggle('open', o === k);
+    });
+    $('fv-where').innerHTML = whereText();
+    $('fv-date').innerHTML = dateText();
+    $('fv-rec').innerHTML = esc(recLabel(formRec()) || 'No se repite');
+    $('fv-rec').classList.toggle('dim', !form.recType);
+    var nr = remsOf(form.rem, !!form.time);
+    $('fv-rem').innerHTML = esc(form.date || form.recType ? (nr.length ? remLabel(form.rem, !!form.time) : 'Ninguno') : 'Pon una fecha');
+    $('fv-rem').classList.toggle('dim', !(form.date || form.recType) || !nr.length);
+    [].forEach.call(document.querySelectorAll('.fprio button'), function (b) { b.classList.toggle('on', +b.dataset.v === form.priority); });
     drawTimeBox();
+    drawPanels();
     var nb = $('tk-notesbtn'), nh = notesHtml(form.notes);
     nb.classList.toggle('has', !!nh);
     var keep = nb.querySelector('.npv'), sc0 = keep ? keep.scrollTop : 0;
-    nb.innerHTML = IC.note + (nh ? '<div class="np"><div class="npl">Notas · toca el texto para editar</div><div class="nrich npv">' + nh + '</div></div>' : '<span class="nt">Notas</span>');
+    nb.innerHTML = nh ? '<div class="np"><div class="nrich npv">' + nh + '</div></div>' : '<span class="nt">Añadir notas</span>';
     if (nb.querySelector('.npv')) nb.querySelector('.npv').scrollTop = sc0;
   }
-
-  function menuItem(a, v, label, on, cls, pre) {
-    return '<button class="mi ' + (on ? 'on ' : '') + (cls || '') + '" data-a="' + a + '" data-v="' + esc(v) + '">' + (pre || '') + '<span>' + label + '</span>' + (on ? '<span class="ck">✓</span>' : '') + '</button>';
+  // Paneles que se despliegan debajo de cada fila
+  function drawPanels() {
+    ['where', 'date', 'rec', 'rem'].forEach(function (k) {
+      var el = $('fp-' + k); if (!el) return;
+      if (form.open !== k) { el.innerHTML = ''; el.classList.add('hidden'); return; }
+      el.innerHTML = k === 'where' ? panelWhere() : k === 'date' ? panelDate() : k === 'rec' ? panelRec() : panelRem();
+      el.classList.remove('hidden');
+      if (k === 'rec') drawRecExtra();
+    });
   }
-  function drawMenu() {
-    var el = $('tk-menu'), m = form.menu, h = '';
-    if (!m) { el.classList.add('hidden'); el.innerHTML = ''; return; }
-    if (m === 'scope') {
-      C.SCOPES.forEach(function (s) { h += menuItem('fscope', s.id, esc(s.name), s.id === form.scope, '', '<i class="sw" style="background:' + s.color + '"></i>'); });
-    } else if (m === 'sub') {
-      h += menuItem('fsub', '', 'Ninguna', !form.sub);
-      subsOf(form.scope).filter(function (x) { return !x.archived || x.id === form.sub; }).forEach(function (x) { h += menuItem('fsub', x.id, esc(x.name), x.id === form.sub); });
-      h += menuItem('fsubnew', '', '＋ Nueva subcategoría', false);
-      if (subsOf(form.scope).length) h += menuItem('tkmenu', 'subedit', 'Editar o borrar subcategorías…', false);
-    } else if (m === 'subedit') {
-      subsOf(form.scope).forEach(function (x) {
-        h += '<div class="mi se"><span>' + esc(x.name) + (x.archived ? ' (archivada)' : '') + '</span><button class="mini-b" data-a="fsubren" data-id="' + esc(x.id) + '">Renombrar</button><button class="mini-b" data-a="fsubarch" data-id="' + esc(x.id) + '">' + (x.archived ? 'Reactivar' : 'Archivar') + '</button><button class="mini-b danger" data-a="fsubdel" data-id="' + esc(x.id) + '">Borrar</button></div>';
+  // Ámbito › Subcategoría en un solo selector, como «Proyecto › Sección» en Todoist
+  function panelWhere() {
+    var h = '<div class="wtree">';
+    C.SCOPES.forEach(function (s) {
+      var on = form.scope === s.id && !form.sub;
+      h += '<button class="wsc' + (on ? ' on' : '') + '" data-a="fwhere" data-v="' + s.id + '|"><i class="sw" style="background:' + s.color + '"></i><span>' + esc(s.name) + '</span>' + (on ? '<span class="ck">✓</span>' : '') + '</button>';
+      subsOf(s.id).filter(function (x) { return !x.archived || x.id === form.sub; }).forEach(function (x) {
+        var on2 = form.sub === x.id;
+        h += '<button class="wsb' + (on2 ? ' on' : '') + '" style="--c:' + s.color + '" data-a="fwhere" data-v="' + s.id + '|' + esc(x.id) + '"><span class="wtg">' + FI.tag + '</span><span>' + esc(x.name) + '</span>' + (on2 ? '<span class="ck">✓</span>' : '') + '</button>';
       });
-      h += menuItem('tkmenu', 'sub', '‹ Volver', false);
-    } else if (m === 'prio') {
-      [[3, '••• Importante'], [2, '•• Menos importante'], [1, '• Poco importante'], [0, 'Sin prioridad']].forEach(function (o) { h += menuItem('fprio', String(o[0]), o[1], form.priority === o[0]); });
-    } else if (m === 'more') {
-      var t = findTask(form.id), st = C.getState(t, form.ctx || t.date);
-      h += menuItem('wontdo', '', st === 'wontdo' ? 'Quitar «No lo haré»' : 'No lo haré', false);
-      if (t.rec && form.ctx && !st) h += menuItem('mvopen', '', 'Mover solo esta vez…', false);
-      if (t.rec && form.ctx) h += menuItem('delone', '', 'Eliminar solo el ' + shortDate(form.ctx), false, 'danger');
-      h += menuItem('deltask', '', t.rec ? 'Eliminar toda la serie' : 'Eliminar', false, 'danger');
-    }
-    el.innerHTML = h; el.classList.remove('hidden');
-    try { el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      h += '<button class="wnew" data-a="fsubnew" data-v="' + s.id + '">＋ Nueva subcategoría en ' + esc(s.name) + '</button>';
+    });
+    return h + '</div><button class="wedit" data-a="subman" data-v="' + form.scope + '">' + FI.edit + 'Renombrar, ocultar o borrar subcategorías</button>';
   }
-
-  function drawDatePanel() {
-    var el = $('tk-datepanel');
-    if (!form.dateOpen) { el.classList.add('hidden'); return; }
+  function panelDate() {
     var td = C.today(), mon = nextMonday(td);
     var month = form.calMonth || (form.date || td).slice(0, 7), p = month.split('-');
     var h = '<div class="qd">' + [['today', 'Hoy', td], ['tomorrow', 'Mañana', C.addDays(td, 1)], ['monday', 'Sig. lunes', mon], ['none', 'Sin fecha', null]].map(function (o) {
@@ -1406,28 +1414,24 @@
       var d = C.addDays(start, i); if (i >= 35 && d.slice(0, 7) !== month) break;
       cells += '<button class="day' + (d === td ? ' today' : '') + (d === form.date ? ' sel' : '') + (d.slice(0, 7) !== month ? ' out' : '') + '" data-a="fpick" data-date="' + d + '">' + C.parse(d).getDate() + '</button>';
     }
-    h += '<div class="mini"><div class="calhead"><button class="ar" data-a="fcalmove" data-n="-1">‹</button><span class="name">' + MESES[+p[1] - 1] + ' ' + p[0] +
-      '</span><button class="ar" data-a="fcalmove" data-n="1">›</button></div><div class="calgrid">' + DL.map(function (l) { return '<span class="wd">' + l + '</span>'; }).join('') + cells + '</div></div>';
-    h += '<button class="acr" data-a="tkrec"><span>Repetir</span><span class="v">' + esc(recLabel(formRec()) || 'Ninguno') + ' ' + (form.recOpen ? '▴' : '▾') + '</span></button>';
-    if (form.recOpen) {
-      h += '<div style="padding:2px 0 8px"><select id="f-rec">' +
-        [['', 'No se repite'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes'], ['yearly', 'Cada año'], ['every', 'Cada X días, semanas o meses']]
-          .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === form.recType ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
-        '</select><div id="f-rec-extra"></div></div>';
-    }
+    return h + '<div class="mini"><div class="calhead"><button class="ar" data-a="fcalmove" data-n="-1">‹</button><span class="name">' + MESES[+p[1] - 1] + ' ' + p[0] +
+      '</span><button class="ar" data-a="fcalmove" data-n="1">›</button></div><div class="calgrid">' + DL.map(function (l) { return '<span class="wd">' + l + '</span>'; }).join('') + cells + '</div></div>' +
+      '<div class="note" style="margin:4px 2px 2px">«Sin fecha» la deja en el buzón.</div>';
+  }
+  function panelRec() {
+    return '<select id="f-rec">' +
+      [['', 'No se repite'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes'], ['yearly', 'Cada año'], ['every', 'Cada X días, semanas o meses']]
+        .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === form.recType ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+      '</select><div id="f-rec-extra"></div>';
+  }
+  function panelRem() {
+    if (!form.date && !form.recType) return '<div class="note" style="margin:2px">Primero pon una fecha: sin fecha no hay cuándo avisarte.</div>';
     var timed = !!form.time, cur = remsOf(form.rem, timed);
-    h += '<button class="acr" data-a="tkrem"><span>Avisos</span><span class="v">' + esc(remLabel(form.rem, timed)) + ' ' + (form.remOpen ? '▴' : '▾') + '</span></button>';
-    if (form.remOpen) {
-      h += '<div class="chips rems">' + (timed ? REM_T : REM_D).map(function (o) {
-        return '<button class="chip ' + (cur.indexOf(o[0]) >= 0 ? 'on' : '') + '" data-a="frem" data-v="' + o[0] + '">' + o[1] + '</button>';
-      }).join('') + '</div><div class="note" style="margin:6px 2px 8px">' +
-        (!form.date && !form.recType ? 'Pon una fecha para que pueda avisarte. ' : '') +
-        (timed ? 'Se cuentan desde la hora de inicio.' : 'Sin hora, el aviso llega a las ' + remHour() + ' de ese día.') +
-        (D.meta.avisosOn ? '' : ' Los avisos están apagados en este dispositivo: actívalos en Ajustes.') + '</div>';
-    }
-    el.innerHTML = h; el.classList.remove('hidden');
-    drawRecExtra();
-    try { el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+    return '<div class="chips rems">' + (timed ? REM_T : REM_D).map(function (o) {
+      return '<button class="chip ' + (cur.indexOf(o[0]) >= 0 ? 'on' : '') + '" data-a="frem" data-v="' + o[0] + '">' + o[1] + '</button>';
+    }).join('') + '</div><div class="note" style="margin:8px 2px 2px">Puedes marcar varios. ' +
+      (timed ? 'Se cuentan desde la hora de inicio.' : 'Como no tiene hora, llegan a las ' + remHour() + '.') +
+      (D.meta.avisosOn ? '' : ' Ojo: los avisos están apagados en este dispositivo (Ajustes).') + '</div>';
   }
 
   function openTask(id, ctxDate, preset) {
@@ -1444,22 +1448,73 @@
       days: t && t.rec && t.rec.days ? t.rec.days.slice() : [],
       n: t && t.rec && t.rec.n ? t.rec.n : 2, unit: t && t.rec && t.rec.unit ? t.rec.unit : 'd',
       rem: t && t.rem ? t.rem.slice() : null,
-      menu: null, dateOpen: false, timeOpen: false, recOpen: false, remOpen: false, calMonth: null
+      open: null, calMonth: null, title: t ? t.title : ''
     };
     if (form.time && !form.date) form.date = C.today();
-    var h = '<div id="tk-main">' +
-      '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
-      '<div class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes" role="button" tabindex="0"></div>' +
-      '<div class="tk-menu hidden" id="tk-menu"></div><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
-      '<div class="tk-bottom"><div class="tk-top"><button class="pill" id="tp-scope" data-a="tkmenu" data-v="scope"></button>' +
-      '<button class="pill" id="tp-sub" data-a="tkmenu" data-v="sub"></button><button class="pill" id="tp-prio" data-a="tkmenu" data-v="prio"></button>' +
-      (t ? '<button class="pill fpl" data-a="tkfocus" aria-label="Enfocarme en esta tarea">▶' + (focusOfTask(t.id) ? ' ' + fmtShort(focusOfTask(t.id)) : '') + '</button>' +
-        '<button class="pill sq" data-a="tkmenu" data-v="more" aria-label="Más opciones">⋯</button>' : '') + '</div>' +
-      '<div class="tk-daterow"><button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-timebox" id="tk-timebox"></div></div>' +
-      '<div class="row" style="margin-top:8px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div></div>';
-    openSheet(h, 'tall');
-    refreshTop();
+    drawForm();
     if (!t) setTimeout(function () { var el = $('f-title'); if (el) el.focus(); }, 250);
+  }
+  function drawForm() {
+    var t = form.id ? findTask(form.id) : null;
+    var h = '<div id="tk-main"><div class="tkh"><button class="tkx" data-a="close">Cancelar</button><b>' + (t ? 'Tarea' : 'Nueva tarea') + '</b>' +
+      '<button class="tks" data-a="savetask">' + (t ? 'Guardar' : 'Añadir') + '</button></div>' +
+      '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + esc(form.title || '') + '" autocomplete="off" enterkeyhint="done">' +
+      '<div class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes" role="button" tabindex="0"></div>' +
+      '<div class="fcard" id="tk-rows">' +
+      frow('where', 'Ámbito', '', false) + '<div class="fpan hidden" id="fp-where"></div>' +
+      frow('date', 'Fecha', '', false) + '<div class="fpan hidden" id="fp-date"></div>' +
+      '<div class="frw static"><span class="fic">' + FI.time + '</span><span class="fl">Hora</span><div class="tk-timebox" id="tk-timebox"></div></div>' +
+      frow('rec', 'Repetir', '', false) + '<div class="fpan hidden" id="fp-rec"></div>' +
+      frow('rem', 'Avisos', '', false) + '<div class="fpan hidden" id="fp-rem"></div>' +
+      '<div class="frw static"><span class="fic">' + FI.prio + '</span><span class="fl">Prioridad</span><div class="fprio">' +
+      PRIOS.map(function (p) { return '<button data-a="fprio" data-v="' + p[0] + '" style="--pc:' + p[2] + '">' + p[1] + '</button>'; }).join('') + '</div></div>' +
+      '</div>';
+    if (t) {
+      var st = C.getState(t, form.ctx || t.date), fm = focusOfTask(t.id);
+      h += '<div class="fcard facts">' +
+        '<button class="frw act" data-a="tkfocus"><span class="fic acc">' + FI.play + '</span><span class="fl">Empezar enfoque</span><span class="fv">' + (fm ? 'llevas ' + fmtDur(fm) : '') + '</span></button>' +
+        (t.rec && form.ctx && !st ? '<button class="frw act" data-a="mvopen"><span class="fic">' + FI.move + '</span><span class="fl">Mover solo esta vez…</span></button>' : '') +
+        '<button class="frw act" data-a="wontdo"><span class="fic">' + FI.x + '</span><span class="fl">' + (st === 'wontdo' ? 'Quitar «No lo haré»' : 'No lo haré') + '</span></button>' +
+        (t.rec && form.ctx ? '<button class="frw act danger" data-a="delone"><span class="fic">' + FI.trash + '</span><span class="fl">Eliminar solo el ' + esc(shortDate(form.ctx)) + '</span></button>' : '') +
+        '<button class="frw act danger" data-a="deltask"><span class="fic">' + FI.trash + '</span><span class="fl">' + (t.rec ? 'Eliminar toda la serie' : 'Eliminar tarea') + '</span></button></div>';
+    }
+    h += '</div>';
+    openSheet(h, 'tall form2');
+    refreshTop();
+  }
+  // Abrir/cerrar una fila (solo una a la vez)
+  function toggleRow(k) {
+    form.open = form.open === k ? null : k;
+    if (k === 'date' && form.open) form.calMonth = null;
+    refreshTop();
+    var r = document.querySelector('.frw[data-v="' + k + '"]');
+    if (r && form.open) try { r.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+  }
+
+  /* ---------- Editar subcategorías (renombrar, ocultar, borrar) ---------- */
+  function subEditor(scope) {
+    var sc = C.scopeById(scope), subs = subsOf(scope);
+    var h = '<div class="sedit" style="--c:' + sc.color + '">';
+    if (!subs.length) h += '<div class="note" style="margin:6px 2px 10px">' + esc(sc.name) + ' aún no tiene subcategorías.</div>';
+    subs.forEach(function (x) {
+      var n = D.tasks.filter(function (t) { return !t.deleted && t.sub === x.id; }).length;
+      h += '<div class="serow' + (x.archived ? ' arch' : '') + '"><span class="wtg">' + FI.tag + '</span><div class="sen"><b>' + esc(x.name) + '</b><small>' + (n === 1 ? '1 tarea' : n + ' tareas') + (x.archived ? ' · oculta al crear tareas' : '') + '</small></div>' +
+        '<button class="seb" data-a="subren" data-id="' + esc(x.id) + '" aria-label="Renombrar">' + FI.edit + '<span>Nombre</span></button>' +
+        '<button class="seb" data-a="subarch" data-id="' + esc(x.id) + '" aria-label="' + (x.archived ? 'Mostrar' : 'Ocultar') + '">' + (x.archived ? FI.eye : FI.eyeoff) + '<span>' + (x.archived ? 'Mostrar' : 'Ocultar') + '</span></button>' +
+        '<button class="seb danger" data-a="subdel" data-id="' + esc(x.id) + '" aria-label="Borrar">' + FI.trash + '<span>Borrar</span></button></div>';
+    });
+    return h + '<button class="wnew" data-a="subadd">＋ Nueva subcategoría en ' + esc(sc.name) + '</button></div>';
+  }
+  var subBack = null; // si se abrió desde el formulario, volver a él al cerrar
+  function openSubs(scope) {
+    if (scope) ui.subScope = scope;
+    var s = ui.subScope || ui.scope;
+    var h = '<div class="tkh"><button class="tkx" data-a="subsback">' + (subBack ? '‹ Volver' : 'Cerrar') + '</button><b>Subcategorías</b><span style="width:70px"></span></div>' +
+      '<div class="chips" style="margin:2px 0 12px">' + C.SCOPES.map(function (x) {
+        return '<button class="chip sc ' + (x.id === s ? 'on' : '') + '" style="--c:' + x.color + '" data-a="subscope" data-v="' + x.id + '"><span class="sw"></span>' + x.name + '</button>'; }).join('') + '</div>' +
+      subEditor(s) +
+      '<div class="note" style="margin:12px 2px 0">«Ocultar» la quita de la lista al crear tareas, pero sus tareas la conservan. «Borrar» no borra las tareas: pasan a «sin subcategoría».</div>';
+    openSheet(h);
   }
 
   function drawRecExtra() {
@@ -1844,37 +1899,35 @@
       case 'calnew': case 'calchg': case 'caldel': calAction(a, id); break;
       case 'gcolreset': D.meta.gColors = {}; save(); render(); openCals(); break;
       /* formulario de tarea */
-      case 'tkmenu': form.menu = form.menu === v ? null : v; drawMenu(); break;
-      case 'fsub': form.sub = v; form.menu = null; drawMenu(); refreshTop(); break;
+      case 'frow': toggleRow(v); break;
+      case 'fwhere':
+        var wp = v.split('|'); form.scope = wp[0]; form.sub = wp[1] || ''; form.open = null; refreshTop(); break;
       case 'fsubnew':
-        var ns = addSub(form.scope, prompt('Nombre de la nueva subcategoría'));
-        if (ns) form.sub = ns.id;
-        form.menu = null; drawMenu(); refreshTop(); break;
-      case 'fsubren': case 'fsubarch': case 'fsubdel':
-        formSubAction(a, id); break;
-      case 'subman': openSubs(); break;
+        var ns = addSub(v, prompt('Nombre de la nueva subcategoría en ' + C.scopeById(v).name));
+        if (ns) { form.scope = v; form.sub = ns.id; form.open = null; }
+        refreshTop(); break;
+      case 'subman':
+        if (form && $('f-title')) { form.title = $('f-title').value; subBack = true; } else subBack = false;
+        openSubs(v || ui.scope); break;
+      case 'subscope': ui.subScope = v; openSubs(); break;
+      case 'subsback':
+        if (subBack && form) { subBack = false; drawForm(); } else { subBack = false; closeSheet(); render(); }
+        break;
       case 'subadd': case 'subren': case 'subarch': case 'subdel': subAction(a, id); break;
-      case 'fscope':
-        form.scope = v;
-        if (form.sub && (subById(form.sub) || {}).scope !== v) form.sub = '';
-        form.menu = null; drawMenu(); refreshTop(); break;
-      case 'fprio': form.priority = +v; form.menu = null; drawMenu(); refreshTop(); break;
-      case 'tkdate': form.dateOpen = !form.dateOpen; form.menu = null; drawMenu(); drawDatePanel(); refreshTop(); break;
-      case 'tkrec': form.recOpen = !form.recOpen; drawDatePanel(); break;
-      case 'tkrem': form.remOpen = !form.remOpen; drawDatePanel(); break;
+      case 'fprio': form.priority = +v; refreshTop(); break;
       case 'frem':
         var cur = remsOf(form.rem, !!form.time), mm = +v, ix = cur.indexOf(mm);
         if (ix >= 0) cur.splice(ix, 1); else cur.push(mm);
-        form.rem = cur; drawDatePanel(); refreshTop(); break;
+        form.rem = cur; refreshTop(); break;
       case 'fdate':
         if (v === 'none') { form.date = null; form.time = null; form.end = null; form.recType = ''; }
         else form.date = v === 'today' ? C.today() : v === 'tomorrow' ? C.addDays(C.today(), 1) : nextMonday(C.today());
-        form.calMonth = form.date ? form.date.slice(0, 7) : null; drawDatePanel(); refreshTop(); break;
-      case 'fpick': form.date = d; form.calMonth = d.slice(0, 7); drawDatePanel(); refreshTop(); break;
+        form.calMonth = form.date ? form.date.slice(0, 7) : null; form.open = null; refreshTop(); break;
+      case 'fpick': form.date = d; form.calMonth = d.slice(0, 7); form.open = null; refreshTop(); break;
       case 'fcalmove':
         var cm = (form.calMonth || (form.date || C.today()).slice(0, 7)).split('-'), cd = new Date(+cm[0], +cm[1] - 1 + (+el.dataset.n), 1);
-        form.calMonth = C.fmt(cd).slice(0, 7); drawDatePanel(); break;
-      case 'ftimeclear': form.time = null; form.end = null; refreshTop(); if (form.dateOpen) drawDatePanel(); break;
+        form.calMonth = C.fmt(cd).slice(0, 7); refreshTop(); break;
+      case 'ftimeclear': form.time = null; form.end = null; refreshTop(); break;
       case 'mvopen': mvs = { id: form.id, from: form.ctx }; closeSheet(); openMove(); break;
       case 'mvquick': $('m-date').value = C.addDays(C.today(), +v); break;
       case 'mvgo':
@@ -1926,13 +1979,13 @@
     if (id === 'f-rec') {
       form.recType = e.target.value;
       if (form.recType && !form.date) form.date = C.today();
-      drawRecExtra(); refreshTop(); drawDatePanel();
+      refreshTop();
     } else if (id === 'f-n') { form.n = Math.max(1, parseInt(e.target.value, 10) || 1); refreshTop(); }
     else if (id === 'f-unit') { form.unit = e.target.value; refreshTop(); }
     else if (id === 'q-time' || id === 'q-end') {
       form.time = $('q-time').value || null; form.end = form.time ? ($('q-end').value || null) : null;
       if (form.time && !form.date) form.date = C.today();
-      refreshTop(); if (form.dateOpen && form.remOpen) drawDatePanel();
+      refreshTop();
     }
   });
   /* ---------- Notas de la tarea (mini editor de texto) ---------- */
