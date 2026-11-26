@@ -177,7 +177,15 @@ body.dragging{overscroll-behavior:none}
 .tk-menu .mi.on{color:var(--accent)}
 .tk-menu .mi.danger{color:#ff6b6b}
 .tk-menu .mi .ck{margin-left:auto}
-.tk-date{display:flex;align-items:center;gap:8px;width:100%;padding:8px 2px;font-size:15px;text-align:left}
+.tk-daterow{display:flex;align-items:center;gap:6px}
+.tk-date{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:8px 2px;font-size:15px;text-align:left}
+.tk-date span:nth-child(2){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tk-timebox{display:flex;align-items:center;gap:4px;flex:none}
+.tchip{position:relative;display:flex;align-items:center;gap:5px;padding:7px 10px;border-radius:12px;background:var(--card2);font-size:14.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tchip.dim{color:var(--muted)}
+.tchip.bad{color:#ff5d5d}
+.tchip input{position:absolute;inset:0;width:100%;height:100%;opacity:0;padding:0;margin:0;border:0;-webkit-appearance:none;appearance:none}
+.tclr{color:var(--muted);font-size:13px;padding:7px 6px}
 .tk-date span:nth-child(2){flex:1}
 .tk-date.late{color:#ff5d5d}
 .tk-datepanel{background:var(--card2);border-radius:16px;padding:10px;margin:4px 0 8px}
