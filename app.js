@@ -183,6 +183,13 @@
       });
     }).catch(function (e) { alert('No se pudieron activar los avisos: ' + (e.message || e)); });
   }
+  // Aviso de prueba: se guarda con la hora actual y el servidor lo manda en su siguiente vuelta (cada minuto).
+  function testAviso() {
+    Sync.rest('/rest/v1/avisos', { method: 'POST', prefer: 'return=minimal', body: [{ enviar_en: new Date().toISOString(), titulo: 'Aviso de prueba', cuerpo: 'Si lo ves (y vibra la pulsera), los avisos funcionan.' }] }).then(function (r) {
+      if (!r.ok) throw new Error('error ' + r.status);
+      alert('Aviso de prueba enviado. Llegará en menos de un minuto: cierra la app o bloquea el iPhone para verlo.');
+    }).catch(function (e) { alert('No se pudo enviar el aviso de prueba: ' + (e.message || e)); });
+  }
   function disableAvisos() {
     D.meta.avisosOn = false; save(); localStorage.removeItem('seguimiento.avisos-plan');
     Sync.rest('/rest/v1/avisos?enviado=eq.false', { method: 'DELETE', prefer: 'return=minimal' }).catch(function () {});
@@ -792,14 +799,15 @@
         mrow({ a: 'gcalnow', act: 1, i: 'sync', c: '#4a9bff', t: 'Actualizar eventos', sub: gev + (G.warn && G.warn.length ? ' · ' + esc(G.warn.join(' · ')) : '') }) +
         mrow({ a: D.meta.avisosOn ? 'avisosoff' : 'avisoson', i: 'bell', c: '#ff7a21', t: 'Avisos', sub: 'Los que elijas en cada tarea', tog: !!D.meta.avisosOn }) +
         (D.meta.avisosOn ? '<label class="mr"><span class="mic" style="--c:#ff7a21"><svg class="i" viewBox="0 0 24 24"><path d="' + MI.bell + '"/></svg></span><span class="mt"><b>Hora para tareas sin hora</b><small>A qué hora llegan sus avisos</small></span>' +
-          '<input type="time" id="s-remhour" class="mtime" value="' + remHour() + '"></label>' : '') + '</div>';
+          '<input type="time" id="s-remhour" class="mtime" value="' + remHour() + '"></label>' +
+          mrow({ a: 'avisostest', act: 1, i: 'bell', c: '#ff7a21', t: 'Probar aviso ahora', sub: 'Llega en menos de un minuto' }) : '') + '</div>';
     }
     h += '<div class="sec">Copia de seguridad</div><div class="card set">' +
       mrow({ a: 'export', act: 1, i: 'down', c: '#34c759', t: 'Exportar copia', sub: D.meta.lastBackup ? 'Última copia: ' + longDate(D.meta.lastBackup) : 'Aún no has hecho ninguna copia' }) +
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 29</div>';
+    return h + '<div class="ver">Versión 30</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -1895,6 +1903,7 @@
       case 'gcalnow': ensureG(true); break;
       case 'avisoson': enableAvisos(); break;
       case 'avisosoff': disableAvisos(); break;
+      case 'avisostest': testAviso(); break;
       case 'cals': openCals(); break;
       case 'calnew': case 'calchg': case 'caldel': calAction(a, id); break;
       case 'gcolreset': D.meta.gColors = {}; save(); render(); openCals(); break;
