@@ -768,7 +768,7 @@
     next: 'M5 12h14M13 6l6 6-6 6', list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
     folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
     cal: 'M4 6h16v14H4zM4 10h16M8 3v5M16 3v5', sync: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5', bell: 'M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',
-    down: 'M12 4v11M7 10l5 5 5-5M5 20h14', up: 'M12 15V4M7 9l5-5 5 5M5 20h14', out: 'M10 5H5v14h5M15 8l4 4-4 4M19 12H9', cloud: 'M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z'
+    down: 'M12 4v11M7 10l5 5 5-5M5 20h14', up: 'M12 15V4M7 9l5-5 5 5M5 20h14', out: 'M10 5H5v14h5M15 8l4 4-4 4M19 12H9', bank: 'M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18', sliders: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4', wallet: 'M4 7a2 2 0 0 1 2-2h11v4M4 7v11a2 2 0 0 0 2 2h14V9H6a2 2 0 0 1-2-2zM16 14h.01', cloud: 'M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z'
   };
   // Una fila de «Más»: icono de color, título, texto pequeño opcional, valor y flecha (o interruptor).
   function mrow(o) {
@@ -807,7 +807,7 @@
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 30</div>';
+    return h + '<div class="ver">Versión 32</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -888,6 +888,7 @@
       drow({ v: 'calendario', i: MI.cal, t: 'Calendario', on: v === 'calendario' }) +
       drow({ v: 'enfoque', i: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 1.5M10 2h4', t: 'Enfoque', on: v === 'enfoque' }) +
       drow({ v: 'objetivos', i: 'M12 4a8 8 0 1 0 .01 0M12 9a3 3 0 1 0 .01 0', t: 'Objetivos', on: v === 'objetivos' }) +
+      drow({ v: 'gestor', i: MI.wallet, t: 'Gestor', on: v === 'gestor' }) +
       drow({ v: 'buzon', i: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5', t: 'Buzón', n: inb + ideas, on: v === 'buzon' }) +
       '<div class="dsec">Ámbitos</div>';
     C.SCOPES.forEach(function (s) {
@@ -1184,8 +1185,289 @@
     ui.fDay = d; save(); closeSheet(); render();
   }
 
+  /* ---------- Gestor: el dinero (movimientos, presupuestos del periodo y ahorro). Cálculos en money.js ---------- */
+  var MY = window.Money;
+  var ACC = { t: { n: 'Tarjeta', c: '#4a9bff' }, e: { n: 'Efectivo', c: '#f5c518' } };
+  var KINDS = { gasto: ['fijos', 'libres', 'inversion', 'ahorro'], ingreso: ['nomina', 'extra'], traspaso: ['retirada', 'deposito'] };
+  var mf = null; // movimiento que se está editando
+  function MD() {
+    if (!D.money || typeof D.money !== 'object') D.money = MY.blank();
+    if (!Array.isArray(D.money.mov)) D.money.mov = [];
+    return D.money;
+  }
+  function eur(c, s) { return MY.eur(c, s); }
+  function nextStart() { var td = C.today(); return +td.slice(8) === 5 ? td : C.addDays(MY.periodOf(td, 5).end, 1); }
+  function perName(p) { return shortDate(p.start) + ' – ' + shortDate(p.end); }
+  function mSubs(cat) { var cf = MY.cfgOf(MD()); return ((cf && cf.subs) || MY.SUBS)[cat] || []; }
+  function movAmount(m) {
+    var k = MY.cat(m.cat).kind;
+    if (k === 'ingreso') return '<span class="mamt in">' + eur(m.c, true) + '</span>';
+    if (k === 'traspaso') return '<span class="mamt tr">⇄ ' + eur(m.c) + '</span>';
+    if (k === 'ajuste') return '<span class="mamt ' + (m.c >= 0 ? 'in' : '') + '">' + eur(m.c, true) + '</span>';
+    return '<span class="mamt">' + eur(-m.c) + '</span>';
+  }
+  function movRow(m) {
+    var ct = MY.cat(m.cat), meta = [];
+    if (m.sub) meta.push(m.sub);
+    if (m.cat === 'retirada') meta.push('Tarjeta → Efectivo');
+    else if (m.cat === 'deposito') meta.push('Efectivo → Tarjeta');
+    else meta.push(ACC[m.acc === 'e' ? 'e' : 't'].n);
+    if (m.cat === 'ajuste') meta.push(m.to === 'fijos' ? 'cargado a fijos' : m.to === 'libres' ? 'cargado a libres' : 'cargado al ahorro');
+    else if (!m.sub || ct.kind !== 'gasto') meta.unshift(ct.short);
+    return '<div class="mov" style="--c:' + ct.color + '" data-a="moedit" data-id="' + esc(m.id) + '"><span class="bar"></span><div class="body"><div class="t">' +
+      esc(m.txt || ct.name) + '</div><div class="m">' + esc(meta.join(' · ')) + '</div></div>' + movAmount(m) + '</div>';
+  }
+  function budRow(name, color, left, total, spent, extra) {
+    var over = left < 0, p = total > 0 ? Math.min(100, Math.round(100 * spent / total)) : (spent > 0 ? 100 : 0);
+    return '<div class="bud" style="--c:' + color + '"><div class="bh"><i></i><span>' + name + '</span><b class="' + (over ? 'neg' : '') + '">' + eur(left) + '</b></div>' +
+      '<div class="qbar"><b style="width:' + p + '%;' + (over ? 'background:#ff6b6b' : '') + '"></b></div>' +
+      '<small>' + (over ? 'Te has pasado ' + eur(-left) + ' · ' : '') + 'Gastado ' + eur(spent) + ' de ' + eur(total) + (extra ? ' · ' + extra : '') + '</small></div>';
+  }
+  function viewGestor() {
+    var M = MD(), td = C.today(), S = MY.calc(M, td);
+    if (!S) {
+      setTop('Gestor', 'Tu dinero');
+      return '<div class="card mintro"><b>Empieza a llevar tu dinero aquí</b><p>Apunta lo que te entra y lo que gastas. La app reparte cada nómina entre gastos fijos, gastos libres de culpa, inversión y ahorro, y te dice cuánto te queda de cada cosa.</p>' +
+        '<p>Cada periodo va del día 5 al día 4 del mes siguiente. Al empezar el siguiente, lo que te sobre de fijos y libres pasa solo al ahorro.</p>' +
+        '<button class="btn primary block" data-a="moset">Configurar el punto de partida</button></div>';
+    }
+    var cur = S.cur, left = C.diffDays(td, cur.end);
+    setTop('Gestor', 'Periodo ' + perName(S.period) + ' · ' + (left === 0 ? 'cierra hoy' : left === 1 ? 'cierra mañana' : 'cierra en ' + left + ' días'));
+    var h = '<div class="card mhero"><small>Dinero total</small><b class="mbig' + (S.total < 0 ? ' neg' : '') + '">' + eur(S.total) + '</b><div class="macc">' +
+      ['t', 'e'].map(function (k) { return '<div style="--c:' + ACC[k].c + '"><span><i></i>' + ACC[k].n + '</span><b>' + eur(S[k]) + '</b></div>'; }).join('') + '</div></div>';
+    // presupuestos del periodo actual
+    var tf = cur.fIni + cur.asigF, tl = cur.lIni + cur.asigL;
+    var perDay = S.libres > 0 ? eur(Math.floor(S.libres / (left + 1))) + '/día' : '';
+    h += '<div class="sec">Te queda este periodo</div><div class="card">' +
+      budRow('Gastos fijos', MY.cat('fijos').color, S.fijos, tf, cur.gF) +
+      budRow('Libres de culpa', MY.cat('libres').color, S.libres, tl, cur.gL, perDay) +
+      '<div class="bud" style="--c:' + MY.cat('inversion').color + '"><div class="bh"><i></i><span>Inversión pendiente</span><b>' + eur(S.inversion) + '</b></div>' +
+      '<small>Se acumula de un periodo a otro' + (S.invTot ? ' · invertido desde el inicio ' + eur(S.invTot) : '') + '</small></div>' +
+      '<div class="bud" style="--c:#34c759"><div class="bh"><i></i><span>Ahorro</span><b class="' + (S.ahorro < 0 ? 'neg' : 'pos') + '">' + eur(S.ahorro) + '</b></div>' +
+      '<small>' + (S.ahorro < 0 ? 'Estás usando dinero reservado para otros presupuestos' : 'En tarjeta ' + eur(S.tAhorro) + ' · en efectivo ' + eur(S.eAhorro)) + '</small></div></div>';
+    // periodo que se mira
+    var vp = ui.gPer && ui.gPer <= S.period.start && ui.gPer >= MY.periodOf(S.cfg.start, S.cfg.day).start ? ui.gPer : S.period.start;
+    var P = MY.periodOf(vp, S.cfg.day), st = MY.statsFor(S, P.start), isCur = P.start === S.period.start;
+    var first = MY.periodOf(S.cfg.start, S.cfg.day).start;
+    h += '<div class="calhead mper"><button class="ar" data-a="moper" data-n="-1" aria-label="Periodo anterior"' + (P.start <= first ? ' disabled style="opacity:.3"' : '') + '>‹</button>' +
+      '<span class="name">' + perName(P) + (isCur ? ' · actual' : '') + '</span><button class="ar" data-a="moper" data-n="1" aria-label="Periodo siguiente"' + (isCur ? ' disabled style="opacity:.3"' : '') + '>›</button></div>';
+    // resumen del periodo
+    if (st) {
+      var lines = [['Ingresos', st.nom + st.extra, 'in'], ['Gastos fijos', -st.gF], ['Libres de culpa', -st.gL], ['Invertido', -st.gI], ['Pagado con ahorros', -st.gA]];
+      if (st.adj) lines.push(['Ajustes', st.adj, st.adj > 0 ? 'in' : '']);
+      h += '<div class="card msum">' + lines.filter(function (x, i) { return i < 3 || x[1]; }).map(function (x) {
+        return '<div class="mvrow"><span>' + x[0] + '</span><span class="' + (x[2] || '') + '">' + eur(x[1], x[2] === 'in') + '</span></div>';
+      }).join('');
+      if (st.nom) h += '<div class="note" style="margin:4px 0 0">Nómina ' + eur(st.nom) + ': ' + eur(st.asigF) + ' a fijos, ' + eur(st.asigL) + ' a libres, ' + eur(st.asigI) + ' a inversión y ' + eur(st.asigA) + ' al ahorro.</div>';
+      var ts = isCur ? S.fijos + S.libres : st.toSave;
+      h += '<div class="mvrow mclose"><span>' + (isCur ? 'Si el periodo cerrara hoy, al ahorro' : 'Pasó al ahorro al cerrar') + '</span><span class="' + (ts < 0 ? 'neg' : 'pos') + '">' + eur(ts, true) + '</span></div></div>';
+      // en qué se va
+      var keys = Object.keys(st.subs), noSub = st.gF + st.gL - keys.reduce(function (a, k) { return a + st.subs[k]; }, 0);
+      var rows = keys.map(function (k) { var p = k.split('|'); return { n: p[1], cat: p[0], c: st.subs[k] }; });
+      if (noSub > 0) rows.push({ n: 'Sin subcategoría', cat: '', c: noSub });
+      rows.sort(function (a, b) { return b.c - a.c; });
+      var all = st.gF + st.gL;
+      if (rows.length && all > 0) {
+        h += '<div class="sec">¿En qué se va?</div><div class="card">' + rows.map(function (r) {
+          var p = Math.round(100 * r.c / all), col = r.cat ? MY.cat(r.cat).color : '#8d8d96';
+          return '<div class="frow" style="--c:' + col + '"><div class="ft"><i></i><span>' + esc(r.n) + '</span><b>' + eur(r.c) + '</b></div>' +
+            '<div class="fl2"><span class="qbar"><b style="width:' + Math.max(p, 2) + '%"></b></span><small>' + p + ' %' + (r.cat ? ' · ' + MY.cat(r.cat).short : '') + '</small></div></div>';
+        }).join('') + '</div>';
+      }
+    }
+    // movimientos del periodo, por día
+    var list = MY.movIn(M, P.start, P.end);
+    h += '<div class="sec">Movimientos <span class="sn">' + list.length + '</span></div>';
+    if (!list.length) h += '<div class="empty">' + (isCur ? 'Aún no hay movimientos en este periodo. Pulsa + para apuntar uno.' : 'No hubo movimientos en este periodo.') + '</div>';
+    var lastD = '';
+    list.forEach(function (m) {
+      if (m.date !== lastD) { h += '<div class="mday">' + (m.date === td ? 'Hoy' : m.date === C.addDays(td, -1) ? 'Ayer' : longDate(m.date)) + '</div>'; lastD = m.date; }
+      h += movRow(m);
+    });
+    h += '<div class="card set" style="margin-top:16px">' +
+      mrow({ a: 'moadj', i: 'bank', c: '#34c759', t: 'Cuadrar con el banco', sub: 'Si se te olvidó apuntar algo, ajusta los saldos reales' }) +
+      mrow({ a: 'moset', i: 'sliders', c: '#ff7a21', t: 'Ajustes del Gestor', sub: 'Reparto ' + S.cfg.split.fijos + '/' + S.cfg.split.libres + '/' + S.cfg.split.inversion + '/' + S.cfg.split.ahorro + ' · punto de partida · subcategorías' }) + '</div>' +
+      '<div class="mnote">Reparto de la nómina: fijos / libres / inversión / ahorro.</div>';
+    return h;
+  }
+
+  // Formulario de movimiento
+  function openMov(id) {
+    var M = MD(), m = id ? M.mov.filter(function (x) { return x.id === id; })[0] : null;
+    if (!MY.cfgOf(M)) { openMset(); return; }
+    var k = m ? MY.cat(m.cat).kind : 'gasto';
+    mf = m ? { id: m.id, kind: k, cat: m.cat, sub: m.sub || '', acc: m.acc || 't', date: m.date, txt: m.txt || '', c: MY.plain(Math.abs(m.c)), to: m.to, raw: m.c } :
+      { id: null, kind: 'gasto', cat: ui.gLastCat || 'libres', sub: '', acc: ui.gLastAcc || 't', date: C.today(), txt: '', c: '' };
+    drawMov();
+    if (!m) setTimeout(function () { var el = $('mo-c'); if (el) el.focus(); }, 250);
+  }
+  function moRead() {
+    if (!mf) return;
+    var a = $('mo-c'), b = $('mo-txt'), d = $('mo-date');
+    if (a) mf.c = a.value; if (b) mf.txt = b.value; if (d) mf.date = d.value;
+  }
+  function drawMov() {
+    var isNew = !mf.id, td = C.today(), cf = MY.cfgOf(MD());
+    var h = '<div class="tkh"><button class="tkx" data-a="close">Cancelar</button><b>' + (isNew ? 'Nuevo movimiento' : 'Movimiento') + '</b>' +
+      (mf.kind === 'ajuste' ? '<span style="min-width:70px"></span>' : '<button class="tks" data-a="mosave">' + (isNew ? 'Añadir' : 'Guardar') + '</button>') + '</div>';
+    if (mf.kind === 'ajuste') {
+      h += '<div class="card" style="background:var(--card2)"><b>' + eur(mf.raw, true) + '</b> en ' + ACC[mf.acc].n.toLowerCase() +
+        '<div class="note">Ajuste hecho con «Cuadrar con el banco» el ' + esc(longDate(mf.date)) + '. Si te equivocaste, bórralo y vuelve a cuadrar.</div></div>' +
+        '<div class="actions"><button class="btn danger" data-a="model">Borrar ajuste</button><button class="btn" data-a="close">Cerrar</button></div>';
+      openSheet(h, 'form2'); return;
+    }
+    h += '<div class="seg mkind">' + [['gasto', 'Gasto'], ['ingreso', 'Ingreso'], ['traspaso', 'Traspaso']].map(function (o) {
+      return '<button class="' + (mf.kind === o[0] ? 'on' : '') + '" data-a="mokind" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    h += '<div class="mamtin ' + mf.kind + '"><span>' + (mf.kind === 'gasto' ? '−' : mf.kind === 'ingreso' ? '+' : '⇄') + '</span><input id="mo-c" inputmode="decimal" placeholder="0,00" value="' + esc(mf.c) + '" autocomplete="off"><span>€</span></div>';
+    h += '<input id="mo-txt" placeholder="' + (mf.kind === 'traspaso' ? 'Nota (opcional)' : 'Concepto (p. ej. Mercadona)') + '" value="' + esc(mf.txt) + '" autocomplete="off" enterkeyhint="done">';
+    h += '<div class="lbl">' + (mf.kind === 'traspaso' ? 'Qué haces' : 'Categoría') + '</div><div class="chips">' + KINDS[mf.kind].map(function (id) {
+      var ct = MY.cat(id);
+      return '<button class="chip sc ' + (mf.cat === id ? 'on' : '') + '" style="--c:' + ct.color + '" data-a="mocat" data-v="' + id + '"><span class="sw"></span>' + ct.name + '</button>'; }).join('') + '</div>';
+    if (mf.cat === 'fijos' || mf.cat === 'libres') {
+      h += '<div class="lbl">Subcategoría (opcional)</div><div class="chips fl">' + mSubs(mf.cat).map(function (s) {
+        return '<button class="chip ' + (mf.sub === s ? 'on' : '') + '" data-a="mosub" data-v="' + esc(s) + '">' + esc(s) + '</button>'; }).join('') +
+        '<button class="chip dimc" data-a="mosubnew">＋ Otra</button></div>';
+    }
+    if (mf.kind === 'traspaso') h += '<div class="note">' + (mf.cat === 'retirada' ? 'Sacas dinero de la tarjeta (cajero): baja la tarjeta y sube el efectivo.' : 'Ingresas efectivo en el banco: baja el efectivo y sube la tarjeta.') + ' El total no cambia.</div>';
+    else h += '<div class="lbl">Cuenta</div><div class="seg sm">' + ['t', 'e'].map(function (k) {
+      return '<button class="' + (mf.acc === k ? 'on' : '') + '" data-a="moacc" data-v="' + k + '">' + ACC[k].n + '</button>'; }).join('') + '</div>';
+    if (mf.cat === 'nomina') h += '<div class="note" id="mo-prev"></div>';
+    if (mf.cat === 'extra') h += '<div class="note">Va entero al ahorro.</div>';
+    if (mf.cat === 'ahorro') h += '<div class="note">Un gasto que pagas con tus ahorros (no toca fijos ni libres). Para apartar dinero no hace falta apuntar nada: el ahorro se calcula solo.</div>';
+    if (mf.cat === 'inversion') h += '<div class="note">Dinero que sale para invertir: baja la inversión pendiente.</div>';
+    h += '<div class="lbl">Fecha</div><input type="date" id="mo-date" value="' + esc(mf.date) + '" min="' + esc(cf.start) + '" max="' + td + '">';
+    h += '<div class="note" id="mo-msg" style="color:#ff6b6b"></div>';
+    if (!isNew) h += '<div class="actions"><button class="btn danger" data-a="model">Borrar movimiento</button></div>';
+    openSheet(h, 'form2');
+    moPreview();
+  }
+  function moPreview() {
+    var el = $('mo-prev'); if (!el || !mf) return;
+    var c = MY.toCents($('mo-c').value), cf = MY.cfgOf(MD()), old = mf.id && MD().mov.filter(function (x) { return x.id === mf.id; })[0];
+    var sp = old && old.sp && old.cat === 'nomina' ? old.sp : cf.split;
+    if (!(c > 0)) { el.textContent = 'Se reparte: ' + sp.fijos + ' % fijos, ' + sp.libres + ' % libres, ' + sp.inversion + ' % inversión y ' + sp.ahorro + ' % ahorro.'; return; }
+    var s = MY.share(c, sp);
+    el.textContent = 'Se reparte: ' + eur(s.fijos) + ' a fijos, ' + eur(s.libres) + ' a libres, ' + eur(s.inversion) + ' a inversión y ' + eur(s.ahorro) + ' al ahorro.';
+  }
+  function saveMov() {
+    moRead();
+    var M = MD(), cf = MY.cfgOf(M), c = MY.toCents(mf.c), msg = $('mo-msg');
+    if (!(c > 0)) { msg.textContent = 'Escribe el importe (por ejemplo 12,50).'; return; }
+    if (c > 100000000) { msg.textContent = 'Ese importe es demasiado grande.'; return; }
+    if (!mf.date) { msg.textContent = 'Elige la fecha.'; return; }
+    if (mf.date < cf.start) { msg.textContent = 'La fecha es anterior al inicio del Gestor (' + shortDate(cf.start) + ').'; return; }
+    if (mf.date > C.today()) { msg.textContent = 'La fecha no puede ser futura.'; return; }
+    var m = mf.id ? M.mov.filter(function (x) { return x.id === mf.id; })[0] : null;
+    if (!m) { m = { id: C.uid(), at: Date.now() }; M.mov.push(m); }
+    var wasNom = m.cat === 'nomina';
+    m.date = mf.date; m.cat = mf.cat; m.c = c; m.txt = String(mf.txt || '').trim().slice(0, 80);
+    m.acc = mf.kind === 'traspaso' ? (mf.cat === 'retirada' ? 't' : 'e') : mf.acc;
+    if (mf.cat === 'fijos' || mf.cat === 'libres') { if (mf.sub) m.sub = mf.sub; else delete m.sub; } else delete m.sub;
+    if (mf.cat === 'nomina') { if (!wasNom || !m.sp) m.sp = JSON.parse(JSON.stringify(cf.split)); } else delete m.sp;
+    ui.gLastCat = mf.kind === 'gasto' ? mf.cat : ui.gLastCat; ui.gLastAcc = m.acc;
+    ui.gPer = null;
+    save(); closeSheet(); mf = null; render();
+  }
+
+  // Cuadrar con el banco: escribe lo que tienes de verdad y la app crea el ajuste
+  function openAdj() {
+    var S = MY.calc(MD(), C.today()); if (!S) return openMset();
+    ui.gAdjTo = ui.gAdjTo || 'libres';
+    openSheet('<h2>Cuadrar con el banco</h2><div class="note" style="margin:-6px 0 12px">Escribe lo que tienes de verdad ahora. Si no coincide con la app, se apunta un ajuste por la diferencia y todo vuelve a cuadrar. Si sabes qué gasto se te olvidó, mejor apúntalo como un movimiento normal.</div>' +
+      '<div class="row"><div style="flex:1"><div class="lbl">Tarjeta (banco)</div><input id="ad-t" inputmode="decimal" placeholder="' + MY.plain(S.t) + '"></div>' +
+      '<div style="flex:1"><div class="lbl">Efectivo (cartera)</div><input id="ad-e" inputmode="decimal" placeholder="' + MY.plain(S.e) + '"></div></div>' +
+      '<div class="note">En la app: tarjeta ' + eur(S.t) + ' · efectivo ' + eur(S.e) + '. Deja vacío lo que ya cuadra.</div>' +
+      '<div class="lbl">¿De dónde sale la diferencia?</div><div class="chips" id="ad-to">' + [['libres', 'Libres de culpa'], ['fijos', 'Gastos fijos'], ['ahorro', 'Ahorro']].map(function (o) {
+        return '<button class="chip ' + (ui.gAdjTo === o[0] ? 'on' : '') + '" data-a="moadjto" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="note" id="ad-prev"></div>' +
+      '<div class="actions"><button class="btn primary" data-a="moadjgo">Cuadrar</button><button class="btn" data-a="close">Cancelar</button></div>');
+    adjPreview();
+  }
+  function adjList() {
+    var S = MY.calc(MD(), C.today()), a = $('ad-t').value.trim(), b = $('ad-e').value.trim();
+    var rt = a ? MY.toCents(a) : null, re = b ? MY.toCents(b) : null;
+    if ((a && isNaN(rt)) || (b && isNaN(re))) return { err: 'Revisa los importes (por ejemplo 1.073,05).' };
+    return { list: MY.adjustFor(S, rt, re) };
+  }
+  function adjPreview() {
+    var el = $('ad-prev'); if (!el) return;
+    var r = adjList();
+    if (r.err) { el.textContent = r.err; return; }
+    if (!r.list.length) { el.textContent = 'Todo cuadra: no hace falta ningún ajuste.'; return; }
+    el.textContent = r.list.map(function (x) { return ACC[x.acc].n + ': ' + eur(x.c, true) + (x.c < 0 ? ' (gasto sin apuntar)' : ' (dinero de más)'); }).join(' · ') +
+      '. Se carga a ' + ({ libres: 'libres de culpa', fijos: 'gastos fijos', ahorro: 'el ahorro' })[ui.gAdjTo] + '.';
+  }
+  function saveAdj() {
+    var r = adjList();
+    if (r.err) return;
+    if (!r.list.length) { closeSheet(); return; }
+    var M = MD(), td = C.today(), now = Date.now();
+    r.list.forEach(function (x, i) { M.mov.push({ id: C.uid(), at: now + i, date: td, cat: 'ajuste', c: x.c, acc: x.acc, to: ui.gAdjTo, txt: 'Ajuste para cuadrar con el banco' }); });
+    ui.gPer = null; save(); closeSheet(); render();
+  }
+
+  // Ajustes del Gestor: punto de partida, reparto y subcategorías
+  function openMset() {
+    var M = MD(), cf = MY.cfgOf(M), first = !cf;
+    cf = cf || { start: nextStart(), split: MY.SPLIT, init: { t: 0, e: 0, f: 0, l: 0, i: 0 }, subs: MY.SUBS };
+    var used = M.mov.length > 0, sp = cf.split, I = cf.init;
+    var inp = function (id, v, ph) { return '<input id="' + id + '" inputmode="decimal" value="' + (v ? MY.plain(v) : '') + '" placeholder="' + (ph || '0,00') + '">'; };
+    var h = '<h2>' + (first ? 'Punto de partida' : 'Ajustes del Gestor') + '</h2>' +
+      '<div class="lbl">Empiezas el</div><input type="date" id="ms-start" value="' + esc(cf.start) + '"' + (used ? ' disabled' : '') + '>' +
+      '<div class="note">' + (used ? 'No se puede cambiar porque ya hay movimientos.' : 'Lo normal es el día 5, el día que cobras. Cada periodo va del 5 al 4.') + '</div>' +
+      '<div class="lbl">Lo que tienes al empezar</div><div class="row"><div style="flex:1"><div class="lbl" style="margin-top:0">Tarjeta</div>' + inp('ms-t', I.t) + '</div>' +
+      '<div style="flex:1"><div class="lbl" style="margin-top:0">Efectivo</div>' + inp('ms-e', I.e) + '</div></div>' +
+      '<div class="note">Pon lo que tienes ANTES de apuntar la nómina; después apunta la nómina con ＋ para que se reparta.</div>' +
+      '<details class="mdet"' + (I.f || I.l || I.i ? ' open' : '') + '><summary>¿Parte de ese dinero ya está reservada?</summary>' +
+      '<div class="row"><div style="flex:1"><div class="lbl">Para fijos</div>' + inp('ms-f', I.f) + '</div><div style="flex:1"><div class="lbl">Para libres</div>' + inp('ms-l', I.l) + '</div><div style="flex:1"><div class="lbl">Inversión</div>' + inp('ms-i', I.i) + '</div></div>' +
+      '<div class="note">Lo que no esté reservado cuenta como ahorro.</div></details>' +
+      '<div class="note" id="ms-sum" style="color:var(--text)"></div>' +
+      '<div class="lbl">Reparto de la nómina (%)</div><div class="row msplit">' + [['fijos', 'Fijos'], ['libres', 'Libres'], ['inversion', 'Inversión'], ['ahorro', 'Ahorro']].map(function (o) {
+        return '<div style="flex:1"><div class="lbl" style="margin-top:0">' + o[1] + '</div><input id="ms-' + o[0] + '" inputmode="decimal" value="' + sp[o[0]] + '"></div>'; }).join('') + '</div>' +
+      '<div class="note" id="ms-ssum"></div>';
+    if (!first) {
+      h += '<div class="lbl">Subcategorías</div>' + ['fijos', 'libres'].map(function (k) {
+        return '<div class="note" style="margin:6px 0 4px">' + MY.cat(k).name + '</div><div class="chips fl">' + (cf.subs[k] || []).map(function (s, i) {
+          return '<button class="chip" data-a="mosubdel" data-v="' + k + '" data-id="' + i + '">' + esc(s) + ' ✕</button>'; }).join('') +
+          '<button class="chip dimc" data-a="mosubadd" data-v="' + k + '">＋ Añadir</button></div>'; }).join('');
+    }
+    h += '<div class="note" id="ms-msg" style="color:#ff6b6b"></div><div class="actions"><button class="btn primary" data-a="mosetgo">' + (first ? 'Empezar' : 'Guardar') + '</button><button class="btn" data-a="close">Cancelar</button>' +
+      (!first ? '<button class="btn danger" data-a="moreset">Borrar todo el Gestor</button>' : '') + '</div>';
+    openSheet(h, 'tall');
+    msPreview();
+  }
+  function msVal(id) { var el = $(id); if (!el) return 0; var v = el.value.trim(); return v ? MY.toCents(v) : 0; }
+  function msPreview() {
+    var el = $('ms-sum'); if (!el) return;
+    var t = msVal('ms-t'), e = msVal('ms-e'), f = msVal('ms-f'), l = msVal('ms-l'), i = msVal('ms-i');
+    if ([t, e, f, l, i].some(isNaN)) el.textContent = 'Revisa los importes (por ejemplo 1.073,05).';
+    else el.textContent = 'Total ' + eur(t + e) + ' · ahorro al empezar ' + eur(t + e - f - l - i);
+    var s = 0; ['fijos', 'libres', 'inversion', 'ahorro'].forEach(function (k) { s += parseFloat(String($('ms-' + k).value).replace(',', '.')) || 0; });
+    var ss = $('ms-ssum'); ss.textContent = 'Suma ' + (Math.round(s * 100) / 100) + ' %' + (Math.abs(s - 100) < 0.001 ? ' ✓' : ' (tiene que sumar 100)') + '. Vale para las nóminas nuevas; las ya apuntadas conservan su reparto.';
+    ss.style.color = Math.abs(s - 100) < 0.001 ? '' : '#ff6b6b';
+  }
+  function saveMset() {
+    var M = MD(), old = M.cfg || {}, msg = $('ms-msg');
+    var init = { t: msVal('ms-t'), e: msVal('ms-e'), f: msVal('ms-f'), l: msVal('ms-l'), i: msVal('ms-i') };
+    if (Object.keys(init).some(function (k) { return isNaN(init[k]); })) { msg.textContent = 'Revisa los importes.'; return; }
+    if (init.f < 0 || init.l < 0 || init.i < 0) { msg.textContent = 'Lo reservado no puede ser negativo.'; return; }
+    var sp = {}; ['fijos', 'libres', 'inversion', 'ahorro'].forEach(function (k) { sp[k] = Math.round((parseFloat(String($('ms-' + k).value).replace(',', '.')) || 0) * 100) / 100; });
+    if (!MY.splitOk(sp)) { msg.textContent = 'El reparto tiene que sumar 100 %.'; return; }
+    var start = $('ms-start').value || old.start;
+    if (!start) { msg.textContent = 'Elige el día en que empiezas.'; return; }
+    M.cfg = { start: start, day: old.day || 5, split: sp, init: init, subs: old.subs || JSON.parse(JSON.stringify(MY.SUBS)) };
+    ui.gPer = null; save(); closeSheet(); render();
+  }
+  function subEdit(a, k, i) {
+    var M = MD(); if (!M.cfg) return;
+    M.cfg.subs = M.cfg.subs || JSON.parse(JSON.stringify(MY.SUBS));
+    var L = M.cfg.subs[k] = M.cfg.subs[k] || [];
+    if (a === 'add') { var n = String(prompt('Nueva subcategoría de ' + MY.cat(k).name.toLowerCase()) || '').trim().slice(0, 30); if (!n) return null; if (L.indexOf(n) < 0) L.push(n); save(); return n; }
+    if (a === 'del' && L[i] != null) { if (!confirm('¿Quitar «' + L[i] + '» de la lista? Los movimientos que ya la tienen la conservan.')) return; L.splice(i, 1); save(); }
+  }
+
   var VIEWS = { enfoque: viewFocus, hoy: viewHoy, buzon: viewBuzon, proximos: viewProximos, todo: viewTodo, ambito: viewAmbito,
-    calendario: viewCal, objetivos: viewObj, papelera: viewPapelera, mas: viewMas };
+    calendario: viewCal, objetivos: viewObj, papelera: viewPapelera, mas: viewMas, gestor: viewGestor };
   var NAVMAP = {};
 
   function setTop(t, s) { $('title').textContent = t; $('subtitle').textContent = s || ''; }
@@ -1367,32 +1649,90 @@
   // Pinta (o actualiza) todas las filas. La de la hora no se rehace para no cerrar el selector del iPhone.
   function refreshTop() {
     if (!form || !$('tk-rows')) return;
-    var o = form.open;
-    ['where', 'date', 'rec', 'rem'].forEach(function (k) {
-      var r = document.querySelector('.frw[data-v="' + k + '"]'); if (r) r.classList.toggle('open', o === k);
-    });
+    var r = document.querySelector('.frw[data-v="where"]'); if (r) r.classList.toggle('open', form.open === 'where');
     $('fv-where').innerHTML = whereText();
-    $('fv-date').innerHTML = dateText();
-    $('fv-rec').innerHTML = esc(recLabel(formRec()) || 'No se repite');
-    $('fv-rec').classList.toggle('dim', !form.recType);
-    var nr = remsOf(form.rem, !!form.time);
-    $('fv-rem').innerHTML = esc(form.date || form.recType ? (nr.length ? remLabel(form.rem, !!form.time) : 'Ninguno') : 'Pon una fecha');
-    $('fv-rem').classList.toggle('dim', !(form.date || form.recType) || !nr.length);
+    $('fv-date').innerHTML = dateSummary();
     [].forEach.call(document.querySelectorAll('.fprio button'), function (b) { b.classList.toggle('on', +b.dataset.v === form.priority); });
-    drawTimeBox();
     drawPanels();
+    if (form.dt) drawDT();
     var nb = $('tk-notesbtn'), nh = notesHtml(form.notes);
     nb.classList.toggle('has', !!nh);
     var keep = nb.querySelector('.npv'), sc0 = keep ? keep.scrollTop : 0;
     nb.innerHTML = nh ? '<div class="np"><div class="nrich npv">' + nh + '</div></div>' : '<span class="nt">Añadir notas</span>';
     if (nb.querySelector('.npv')) nb.querySelector('.npv').scrollTop = sc0;
   }
+  // Resumen de la fila «Fecha»: día, hora, repetición y avisos juntos
+  function dateSummary() {
+    if (!form.date && !form.recType) return '<span class="dim">Sin fecha · buzón</span>';
+    var p = [dateText()];
+    if (form.time) p.push(esc(timeText()));
+    if (form.recType) p.push('↻');
+    var nr = remsOf(form.rem, !!form.time).length;
+    if (nr) p.push('🔔' + (nr > 1 ? nr : ''));
+    return p.join(' <span class="fsep">·</span> ');
+  }
+
+  /* Panel «Fecha y hora» (como TickTick): calendario y, debajo, Hora, Recordar y Repetir en una sola tarjeta.
+     ✕ deshace lo cambiado aquí, ✓ lo acepta y «Limpiar» deja la tarea sin fecha. */
+  function openDT() {
+    form.snap = { date: form.date, time: form.time, end: form.end, recType: form.recType, days: form.days.slice(), n: form.n, unit: form.unit, rem: form.rem ? form.rem.slice() : null };
+    form.dt = true; form.dtOpen = null; form.open = null; form.calMonth = null;
+    var v = $('dt-view');
+    v.innerHTML = '<div class="dth"><button class="dtb" data-a="dtcancel" aria-label="Cancelar">✕</button><b>Fecha</b><button class="dtb ok" data-a="dtok" aria-label="Aceptar">✓</button></div>' +
+      '<div id="dt-q"></div><div id="dt-cal" class="mini"></div>' +
+      '<div class="fcard dtcard">' +
+      '<button class="frw" data-a="dtrow" data-v="time"><span class="fic">' + FI.time + '</span><span class="fl">Hora</span><span class="fv" id="dtv-time"></span><span class="fch">›</span></button>' +
+      '<div class="fpan hidden" id="dtp-time"><div class="tk-timebox dtbox" id="tk-timebox"></div><div class="note" style="margin:8px 2px 2px">Inicio y, si quieres, fin. Sin fin, en «Día por horas» ocupa 30 min.</div></div>' +
+      '<button class="frw" data-a="dtrow" data-v="rem"><span class="fic">' + FI.rem + '</span><span class="fl">Recordar</span><span class="fv" id="dtv-rem"></span><span class="fch">›</span></button>' +
+      '<div class="fpan hidden" id="dtp-rem"></div>' +
+      '<button class="frw" data-a="dtrow" data-v="rec"><span class="fic">' + FI.rec + '</span><span class="fl">Repetir</span><span class="fv" id="dtv-rec"></span><span class="fch">›</span></button>' +
+      '<div class="fpan hidden" id="dtp-rec"></div></div>' +
+      '<button class="dtclear" data-a="dtclear">Limpiar</button>';
+    v.classList.remove('hidden');
+    v.closest('.panel').classList.add('dtmode');
+    v.closest('.panel').scrollTop = 0;
+    refreshTop();
+  }
+  function closeDT() {
+    form.dt = false; form.dtOpen = null;
+    var v = $('dt-view'); if (!v) return;
+    v.closest('.panel').classList.remove('dtmode');
+    v.innerHTML = ''; v.classList.add('hidden');
+    refreshTop();
+  }
+  function drawDT() {
+    var td = C.today(), mon = nextMonday(td), o = form.dtOpen;
+    $('dt-q').innerHTML = '<div class="qd">' + [['today', 'Hoy', td], ['tomorrow', 'Mañana', C.addDays(td, 1)], ['monday', 'Sig. lunes', mon], ['none', 'Sin fecha', null]].map(function (x) {
+      return '<button class="' + ((x[2] ? form.date === x[2] : !form.date) ? 'on' : '') + '" data-a="fdate" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    var month = form.calMonth || (form.date || td).slice(0, 7), p = month.split('-'), start = C.mondayOf(month + '-01'), cells = '';
+    for (var i = 0; i < 42; i++) {
+      var d = C.addDays(start, i); if (i >= 35 && d.slice(0, 7) !== month) break;
+      cells += d.slice(0, 7) !== month ? '<span class="day out"></span>' :
+        '<button class="day' + (d === td ? ' today' : '') + (d === form.date ? ' sel' : '') + '" data-a="fdpick" data-date="' + d + '"><span>' + C.parse(d).getDate() + '</span></button>';
+    }
+    $('dt-cal').innerHTML = '<div class="calhead"><button class="ar" data-a="fcalmove" data-n="-1" aria-label="Mes anterior">‹</button><span class="name">' + MESES[+p[1] - 1] + (p[0] !== td.slice(0, 4) ? ' ' + p[0] : '') +
+      '</span><button class="ar" data-a="fcalmove" data-n="1" aria-label="Mes siguiente">›</button></div><div class="calgrid">' + DL.map(function (l) { return '<span class="wd">' + l + '</span>'; }).join('') + cells + '</div>';
+    var nr = remsOf(form.rem, !!form.time);
+    $('dtv-time').textContent = form.time ? timeText() : 'Ninguna';
+    $('dtv-time').classList.toggle('dim', !form.time);
+    $('dtv-rem').textContent = form.date || form.recType ? (nr.length ? remLabel(form.rem, !!form.time) : 'Ninguno') : 'Pon una fecha';
+    $('dtv-rem').classList.toggle('dim', !nr.length);
+    $('dtv-rec').textContent = recLabel(formRec()) || 'No se repite';
+    $('dtv-rec').classList.toggle('dim', !form.recType);
+    ['time', 'rem', 'rec'].forEach(function (k) {
+      document.querySelector('.dtcard .frw[data-v="' + k + '"]').classList.toggle('open', o === k);
+      var el = $('dtp-' + k); el.classList.toggle('hidden', o !== k);
+      if (k === 'rem') el.innerHTML = o === k ? panelRem() : '';
+      if (k === 'rec') { el.innerHTML = o === k ? panelRec() : ''; if (o === k) drawRecExtra(); }
+    });
+    drawTimeBox();
+  }
   // Paneles que se despliegan debajo de cada fila
   function drawPanels() {
-    ['where', 'date', 'rec', 'rem'].forEach(function (k) {
+    ['where'].forEach(function (k) {
       var el = $('fp-' + k); if (!el) return;
       if (form.open !== k) { el.innerHTML = ''; el.classList.add('hidden'); return; }
-      el.innerHTML = k === 'where' ? panelWhere() : k === 'date' ? panelDate() : k === 'rec' ? panelRec() : panelRem();
+      el.innerHTML = panelWhere();
       el.classList.remove('hidden');
       if (k === 'rec') drawRecExtra();
     });
@@ -1410,21 +1750,6 @@
       h += '<button class="wnew" data-a="fsubnew" data-v="' + s.id + '">＋ Nueva subcategoría en ' + esc(s.name) + '</button>';
     });
     return h + '</div><button class="wedit" data-a="subman" data-v="' + form.scope + '">' + FI.edit + 'Renombrar, ocultar o borrar subcategorías</button>';
-  }
-  function panelDate() {
-    var td = C.today(), mon = nextMonday(td);
-    var month = form.calMonth || (form.date || td).slice(0, 7), p = month.split('-');
-    var h = '<div class="qd">' + [['today', 'Hoy', td], ['tomorrow', 'Mañana', C.addDays(td, 1)], ['monday', 'Sig. lunes', mon], ['none', 'Sin fecha', null]].map(function (o) {
-      return '<button class="' + ((o[2] ? form.date === o[2] : !form.date) ? 'on' : '') + '" data-a="fdate" data-v="' + o[0] + '">' + o[1] + '</button>';
-    }).join('') + '</div>';
-    var start = C.mondayOf(month + '-01'), cells = '';
-    for (var i = 0; i < 42; i++) {
-      var d = C.addDays(start, i); if (i >= 35 && d.slice(0, 7) !== month) break;
-      cells += '<button class="day' + (d === td ? ' today' : '') + (d === form.date ? ' sel' : '') + (d.slice(0, 7) !== month ? ' out' : '') + '" data-a="fpick" data-date="' + d + '">' + C.parse(d).getDate() + '</button>';
-    }
-    return h + '<div class="mini"><div class="calhead"><button class="ar" data-a="fcalmove" data-n="-1">‹</button><span class="name">' + MESES[+p[1] - 1] + ' ' + p[0] +
-      '</span><button class="ar" data-a="fcalmove" data-n="1">›</button></div><div class="calgrid">' + DL.map(function (l) { return '<span class="wd">' + l + '</span>'; }).join('') + cells + '</div></div>' +
-      '<div class="note" style="margin:4px 2px 2px">«Sin fecha» la deja en el buzón.</div>';
   }
   function panelRec() {
     return '<select id="f-rec">' +
@@ -1470,10 +1795,7 @@
       '<div class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes" role="button" tabindex="0"></div>' +
       '<div class="fcard" id="tk-rows">' +
       frow('where', 'Ámbito', '', false) + '<div class="fpan hidden" id="fp-where"></div>' +
-      frow('date', 'Fecha', '', false) + '<div class="fpan hidden" id="fp-date"></div>' +
-      '<div class="frw static"><span class="fic">' + FI.time + '</span><span class="fl">Hora</span><div class="tk-timebox" id="tk-timebox"></div></div>' +
-      frow('rec', 'Repetir', '', false) + '<div class="fpan hidden" id="fp-rec"></div>' +
-      frow('rem', 'Avisos', '', false) + '<div class="fpan hidden" id="fp-rem"></div>' +
+      frow('date', 'Fecha', '', false) +
       '<div class="frw static"><span class="fic">' + FI.prio + '</span><span class="fl">Prioridad</span><div class="fprio">' +
       PRIOS.map(function (p) { return '<button data-a="fprio" data-v="' + p[0] + '" style="--pc:' + p[2] + '">' + p[1] + '</button>'; }).join('') + '</div></div>' +
       '</div>';
@@ -1486,12 +1808,13 @@
         (t.rec && form.ctx ? '<button class="frw act danger" data-a="delone"><span class="fic">' + FI.trash + '</span><span class="fl">Eliminar solo el ' + esc(shortDate(form.ctx)) + '</span></button>' : '') +
         '<button class="frw act danger" data-a="deltask"><span class="fic">' + FI.trash + '</span><span class="fl">' + (t.rec ? 'Eliminar toda la serie' : 'Eliminar tarea') + '</span></button></div>';
     }
-    h += '</div>';
+    h += '</div><div id="dt-view" class="dtv hidden"></div>';
     openSheet(h, 'tall form2');
     refreshTop();
   }
   // Abrir/cerrar una fila (solo una a la vez)
   function toggleRow(k) {
+    if (k === 'date') { openDT(); return; }
     form.open = form.open === k ? null : k;
     if (k === 'date' && form.open) form.calMonth = null;
     refreshTop();
@@ -1800,7 +2123,7 @@
     var a = el.dataset.a, id = el.dataset.id, d = el.dataset.date, v = el.dataset.v, t;
     switch (a) {
       case 'nav': closeSheet(); go(el.dataset.view); break;
-      case 'fab': ui.view === 'objetivos' ? openGoal() : ui.view === 'buzon' && ui.inbTab === 'obj' ? openIdea() : openTask(); break;
+      case 'fab': ui.view === 'gestor' ? openMov() : ui.view === 'objetivos' ? openGoal() : ui.view === 'buzon' && ui.inbTab === 'obj' ? openIdea() : openTask(); break;
       case 'menu': openDrawer(); break;
       case 'vsopen': openVs(v); break;
       case 'vsset':
@@ -1852,7 +2175,29 @@
       case 'ideaconv': var ix = saveIdea(); if (ix) openGoal(null, { title: ix.title, scope: ix.scope, ideaId: ix.id }); break;
       case 'ideadel':
         if (confirm('¿Eliminar esta idea de objetivo?')) { D.ideas = (D.ideas || []).filter(function (i) { return i.id !== form.ideaId; }); save(); closeSheet(); render(); } break;
-      case 'close': closeSheet(); break;
+      case 'close': closeSheet(); mf = null; break;
+      /* Gestor */
+      case 'moedit': openMov(id); break;
+      case 'mokind': moRead(); mf.kind = v; mf.cat = KINDS[v][0] === 'fijos' ? (ui.gLastCat || 'libres') : KINDS[v][0]; mf.sub = ''; drawMov(); break;
+      case 'mocat': moRead(); if (mf.cat !== v) mf.sub = ''; mf.cat = v; drawMov(); break;
+      case 'mosub': moRead(); mf.sub = mf.sub === v ? '' : v; drawMov(); break;
+      case 'mosubnew': moRead(); var ns = subEdit('add', mf.cat); if (ns) mf.sub = ns; drawMov(); break;
+      case 'moacc': moRead(); mf.acc = v; drawMov(); break;
+      case 'mosave': saveMov(); break;
+      case 'model':
+        if (confirm('¿Borrar este movimiento? Los saldos se recalculan.')) { MD().mov = MD().mov.filter(function (x) { return x.id !== mf.id; }); save(); closeSheet(); mf = null; render(); } break;
+      case 'moper':
+        var Sx = MY.calc(MD(), C.today()), cp = MY.periodOf(ui.gPer || Sx.period.start, Sx.cfg.day);
+        ui.gPer = (+el.dataset.n < 0 ? MY.prevPeriod(cp, Sx.cfg.day) : MY.nextPeriod(cp, Sx.cfg.day)).start; render(); break;
+      case 'moadj': openAdj(); break;
+      case 'moadjto': ui.gAdjTo = v; [].forEach.call($('ad-to').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); adjPreview(); break;
+      case 'moadjgo': saveAdj(); break;
+      case 'moset': openMset(); break;
+      case 'mosetgo': saveMset(); break;
+      case 'mosubadd': subEdit('add', v); openMset(); break;
+      case 'mosubdel': subEdit('del', v, +id); openMset(); break;
+      case 'moreset':
+        if (confirm('¿Borrar TODO el Gestor (movimientos y ajustes)? No se puede deshacer. Haz antes una copia de seguridad si tienes dudas.') && confirm('¿Seguro? Se borrarán ' + MD().mov.length + ' movimientos.')) { D.money = MY.blank(); save(); closeSheet(); render(); } break;
       case 'toggle': t = findTask(id); toggleState(t, d || t.date); break;
       case 'edit': openTask(id, d); break;
       case 'scope': if (ui.scope !== el.dataset.scope) ui.af = null; ui.scope = el.dataset.scope; render(); break;
@@ -1932,10 +2277,20 @@
         if (v === 'none') { form.date = null; form.time = null; form.end = null; form.recType = ''; }
         else form.date = v === 'today' ? C.today() : v === 'tomorrow' ? C.addDays(C.today(), 1) : nextMonday(C.today());
         form.calMonth = form.date ? form.date.slice(0, 7) : null; form.open = null; refreshTop(); break;
-      case 'fpick': form.date = d; form.calMonth = d.slice(0, 7); form.open = null; refreshTop(); break;
+      case 'fdpick': form.date = d; form.calMonth = d.slice(0, 7); form.open = null; refreshTop(); break;
       case 'fcalmove':
         var cm = (form.calMonth || (form.date || C.today()).slice(0, 7)).split('-'), cd = new Date(+cm[0], +cm[1] - 1 + (+el.dataset.n), 1);
         form.calMonth = C.fmt(cd).slice(0, 7); refreshTop(); break;
+      case 'dtrow': form.dtOpen = form.dtOpen === v ? null : v; refreshTop(); break;
+      case 'dtok':
+        if ($('q-time')) { form.time = $('q-time').value || null; form.end = form.time ? ($('q-end').value || null) : null; }
+        if ($('f-n')) form.n = Math.max(1, parseInt($('f-n').value, 10) || 1);
+        if ($('f-unit')) form.unit = $('f-unit').value;
+        if (form.end && form.time && form.end <= form.time) { alert('La hora de fin debe ser posterior a la de inicio.'); break; }
+        if (form.time && !form.date) form.date = C.today();
+        closeDT(); break;
+      case 'dtcancel': for (var sk in form.snap) form[sk] = form.snap[sk]; closeDT(); break;
+      case 'dtclear': form.date = null; form.time = null; form.end = null; form.recType = ''; form.rem = null; closeDT(); break;
       case 'ftimeclear': form.time = null; form.end = null; refreshTop(); break;
       case 'mvopen': mvs = { id: form.id, from: form.ctx }; closeSheet(); openMove(); break;
       case 'mvquick': $('m-date').value = C.addDays(C.today(), +v); break;
@@ -2119,6 +2474,10 @@
     clearTimeout(notesT); notesT = setTimeout(flushNotes, 600);
   }
   document.addEventListener('input', function (e) {
+    var gid = e.target.id || '';
+    if (gid === 'mo-c') { moPreview(); return; }
+    if (gid === 'ad-t' || gid === 'ad-e') { adjPreview(); return; }
+    if (gid.slice(0, 3) === 'ms-') { msPreview(); return; }
     if (e.target.id === 'af-q') { ambF().q = e.target.value; var r = $('amb-res'); if (r) r.innerHTML = ambResults(); return; }
     if (e.target.id === 'f-notes') notesChanged();
     if (e.target.id === 'fp-q') {
@@ -2128,6 +2487,7 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target.id === 'f-title' && form) { e.preventDefault(); saveTask(); }
+    if (e.key === 'Enter' && (e.target.id === 'mo-txt' || e.target.id === 'mo-c') && mf) { e.preventDefault(); saveMov(); }
     if (e.key === 'Enter' && e.target.id === 'i-title' && form) { e.preventDefault(); if (saveIdea()) { closeSheet(); render(); } }
   });
   $('importFile').addEventListener('change', function (e) {
