@@ -235,17 +235,6 @@
     D.meta.subs.push(n); save();
     return n;
   }
-  function groupBySub(items, scope) {
-    var out = [];
-    subsOf(scope).forEach(function (x) {
-      var arr = items.filter(function (i) { return i.t.sub === x.id; });
-      if (arr.length) out.push({ sub: x, items: arr });
-    });
-    var rest = items.filter(function (i) { return !subById(i.t.sub); });
-    if (rest.length) out.push({ sub: null, items: rest });
-    return out;
-  }
-
   /* ---------- Filas ---------- */
   function recLabel(r) {
     if (!r) return '';
@@ -271,11 +260,92 @@
       '<span class="bar"></span><span class="dots">' + dots + '</span>' +
       '<button class="chk" data-a="toggle" data-id="' + esc(t.id) + '" data-date="' + esc(d || '') + '" aria-label="Completar">' + mark + '</button>' +
       '<div class="body" data-a="edit" data-id="' + esc(t.id) + '" data-date="' + esc(d || '') + '"><div class="t">' + esc(t.title) + '</div>' +
-      (meta.length ? '<div class="m">' + esc(meta.join(' · ')) + '</div>' : '') + '</div>' + (inbox ? '<span class="tag">' + esc(sc.name) + '</span>' : '') + '</div>';
+      (meta.length ? '<div class="m">' + esc(meta.join(' · ')) + '</div>' : '') + '</div>' + (inbox ? '<button class="qs" data-a="qsched" data-id="' + esc(t.id) + '" aria-label="Ponerle día">' + IC_QS + '</button>' : '') + '</div>';
   }
+  // Hechas y descartadas siempre al final (así la primera tarea es la que toca hacer)
+  function doneLast(items) {
+    var a = [], b = [];
+    items.forEach(function (x) { (C.getState(x.t, x.d || x.t.date) ? b : a).push(x); });
+    return a.concat(b);
+  }
+  var IC_QS = '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/></svg>';
   function list(items, showDate, empty) {
     if (!items.length) return empty ? '<div class="empty">' + empty + '</div>' : '';
-    return items.map(function (x) { return taskRow(x.t, x.d, showDate); }).join('');
+    return doneLast(items).map(function (x) { return taskRow(x.t, x.d, showDate); }).join('');
+  }
+
+  /* ---------- Agrupar y ordenar (cada lista recuerda el suyo; lo que arrastras manda) ---------- */
+  var VS_DEF = { hoy: { g: 'none', o: 'auto' }, proximos: { g: 'fecha', o: 'auto' }, todo: { g: 'fecha', o: 'auto' }, buzon: { o: 'auto' }, ambito: { o: 'auto' } };
+  var VS_G = { hoy: ['none', 'ambito', 'prioridad'], proximos: ['fecha', 'ambito', 'prioridad', 'none'], todo: ['fecha', 'ambito', 'prioridad', 'none'] };
+  var G_NAME = { none: 'Ninguno', fecha: 'Fecha', ambito: 'Ámbito', prioridad: 'Prioridad' };
+  var O_LIST = [['auto', 'Automático'], ['prioridad', 'Prioridad'], ['hora', 'Fecha y hora'], ['titulo', 'Título'], ['creacion', 'Más nuevas']];
+  function vs(k) {
+    D.meta.vs = D.meta.vs || {};
+    var v = D.meta.vs[k] || {}, d = VS_DEF[k] || { g: 'none', o: 'auto' };
+    return { g: v.g || d.g, o: v.o || d.o, hd: !!v.hd };
+  }
+  function sortWith(o) {
+    return function (a, b) {
+      var ma = a.t.order != null, mb = b.t.order != null; // 1.º lo que has movido a mano
+      if (ma && mb && a.t.order !== b.t.order) return a.t.order - b.t.order;
+      if (ma !== mb) return ma ? -1 : 1;
+      var r = 0;
+      if (o === 'prioridad') r = (b.t.priority || 0) - (a.t.priority || 0);
+      else if (o === 'hora') {
+        var da = a.d || '9999', db = b.d || '9999';
+        r = da < db ? -1 : da > db ? 1 : 0;
+        if (!r) { var ta = a.t.time || '99', tb = b.t.time || '99'; r = ta < tb ? -1 : ta > tb ? 1 : 0; }
+      } else if (o === 'titulo') r = a.t.title.localeCompare(b.t.title, 'es', { sensitivity: 'base' });
+      else if (o === 'creacion') r = (b.t.created || 0) - (a.t.created || 0);
+      return r || C.cmp(a, b);
+    };
+  }
+  function sortList(items, o) { return items.slice().sort(sortWith(o)); }
+  var PRIO_NAME = { 3: 'Prioridad alta', 2: 'Prioridad media', 1: 'Prioridad baja', 0: 'Sin prioridad' };
+  // Pinta una lista según su forma de agrupar y ordenar. Cada grupo va en su caja (arrastrar no mezcla grupos).
+  function renderList(k, items, showDate, empty, dateTitle) {
+    var v = vs(k), td = C.today();
+    if (v.hd) items = items.filter(function (x) { return !C.getState(x.t, x.d || x.t.date); });
+    if (!items.length) return empty ? '<div class="empty">' + empty + '</div>' : '';
+    items = sortList(items, v.o);
+    var groups = [], by = {};
+    function put(key, title, x, c) { if (!by[key]) { by[key] = { key: key, title: title, c: c, items: [] }; groups.push(by[key]); } by[key].items.push(x); }
+    if (v.g === 'ambito') {
+      C.SCOPES.forEach(function (s) { items.forEach(function (x) { if (x.t.scope === s.id) put(s.id, s.name, x, s.color); }); });
+      items.forEach(function (x) { if (!C.SCOPES.some(function (s) { return s.id === x.t.scope; })) put('?', 'Otros', x); });
+    } else if (v.g === 'prioridad') {
+      [3, 2, 1, 0].forEach(function (pr) { items.forEach(function (x) { if ((x.t.priority || 0) === pr) put('p' + pr, PRIO_NAME[pr], x); }); });
+    } else if (v.g === 'fecha') {
+      var keys = [];
+      items.forEach(function (x) { var kk = x.d || ''; if (keys.indexOf(kk) < 0) keys.push(kk); });
+      keys.sort(function (a, b) { if (!a) return 1; if (!b) return -1; return a < b ? -1 : 1; });
+      keys.forEach(function (kk) { items.forEach(function (x) { if ((x.d || '') === kk) put('d' + kk, dateTitle ? dateTitle(kk) : (kk ? longDate(kk) : 'Sin fecha'), x); }); });
+    } else groups.push({ key: 'all', title: '', items: items });
+    var showD = showDate && v.g !== 'fecha';
+    return groups.map(function (g) {
+      var rows = doneLast(g.items).map(function (x) { return taskRow(x.t, x.d, showD).replace(/data-group="[^"]*"/, 'data-group="' + esc(g.key) + '"'); }).join('');
+      return (g.title ? '<div class="sec">' + (g.c ? '<span class="gsec"><i style="background:' + g.c + '"></i>' + esc(g.title) + '</span>' : '<span>' + esc(g.title) + '</span>') + '<span class="sn">' + g.items.length + '</span></div>' : '') +
+        '<div class="sg">' + rows + '</div>';
+    }).join('');
+  }
+  function openVs(k) {
+    var v = vs(k), gs = VS_G[k], h = '<h2>Agrupar y ordenar</h2>';
+    if (gs) h += '<div class="lbl">Agrupar por</div><div class="chips">' + gs.map(function (g) { return '<button class="chip ' + (v.g === g ? 'on' : '') + '" data-a="vsset" data-k="g" data-v="' + g + '">' + G_NAME[g] + '</button>'; }).join('') + '</div>';
+    h += '<div class="lbl">Ordenar por</div><div class="chips">' + O_LIST.map(function (o) { return '<button class="chip ' + (v.o === o[0] ? 'on' : '') + '" data-a="vsset" data-k="o" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    if (k !== 'buzon' && k !== 'todo') h += '<button class="mr" data-a="vsset" data-k="hd" data-v="' + (v.hd ? '' : '1') + '" role="switch" aria-checked="' + v.hd + '" style="margin-top:14px"><span class="mt"><b>Ocultar completadas</b><small>Si no, salen al final de la lista</small></span><span class="tog' + (v.hd ? ' on' : '') + '"><i></i></span></button>';
+    h += '<div class="note" style="margin-top:12px">Lo que muevas a mano (mantén pulsada una tarea y arrástrala) va siempre por delante de este orden.</div>' +
+      '<div class="actions"><button class="btn" data-a="vsreset">Quitar mi orden manual de esta lista</button><button class="btn primary" data-a="close">Listo</button></div>';
+    ui.vsk = k; openSheet(h);
+  }
+  // Tareas que se ven ahora en una lista (para «Quitar mi orden manual»)
+  function listTasks(k) {
+    var td = C.today(), arr = [];
+    if (k === 'hoy') arr = C.tasksOn(D, td);
+    else if (k === 'proximos') for (var i = 1; i <= 7; i++) arr = arr.concat(C.tasksOn(D, C.addDays(td, i)));
+    else if (k === 'todo') arr = allPending();
+    else if (k === 'buzon') arr = D.tasks.filter(function (t) { return !t.deleted && !t.date; }).map(function (t) { return { t: t }; });
+    else if (k === 'ambito') arr = D.tasks.filter(function (t) { return t.scope === ui.scope; }).map(function (t) { return { t: t }; });
+    return arr.map(function (x) { return x.t; });
   }
 
   /* ---------- Consultas ---------- */
@@ -331,22 +401,14 @@
     var pend = items.filter(function (x) { return !C.getState(x.t, x.d); }).length;
     setTop('Hoy', longDate(td) + (items.length ? ' · ' + pend + ' pendientes' : ''));
     var h = '';
-    if (od.length) h += '<div class="sec">Atrasadas</div>' + list(od, true);
-    h += '<div class="sec">Tareas de hoy</div>' + list(items, false, 'No hay tareas para hoy.');
+    if (od.length) h += '<div class="sec">Atrasadas</div><div class="sg">' + list(od, true) + '</div>';
+    var hv = vs('hoy');
+    if (hv.g === 'none') h += '<div class="sec"><span>Tareas de hoy</span></div>';
+    h += renderList('hoy', items, false, hv.hd && items.length ? 'No te quedan tareas pendientes hoy.' : 'No hay tareas para hoy.');
     h += '<div class="sec">Registro de cumplimiento</div>' + weekGrid();
     h += '<div class="note">Toca una casilla para marcar si cumpliste el objetivo del día en ese ámbito. Es independiente de las tareas.</div>' +
       '<div class="note">Mantén pulsada una tarea y arrástrala para ordenarla dentro de su día. Lo que muevas manda; lo que no muevas se ordena solo (prioridad y ámbito).</div>';
     return h;
-  }
-
-  // Agrupa por subcategoría (cada grupo en su caja, para que arrastrar no mezcle grupos). Sin subcategorías: lista normal.
-  function subGroups(items, scope, rowFn, asSec) {
-    var gr = groupBySub(items, scope);
-    if (gr.length === 1 && !gr[0].sub) return '<div class="sg">' + items.map(rowFn).join('') + '</div>';
-    return gr.map(function (g) {
-      var name = esc(g.sub ? g.sub.name : 'Sin subcategoría');
-      return (asSec ? '<div class="sec">' + name + '</div>' : '<div class="subh">' + name + '</div>') + '<div class="sg">' + g.items.map(rowFn).join('') + '</div>';
-    }).join('');
   }
 
   function tabsBuzon() {
@@ -354,10 +416,24 @@
     return '<div class="seg"><button class="' + (ui.inbTab !== 'obj' ? 'on' : '') + '" data-a="inbtab" data-v="tareas">Tareas · ' + nt + '</button>' +
       '<button class="' + (ui.inbTab === 'obj' ? 'on' : '') + '" data-a="inbtab" data-v="obj">Objetivos · ' + ni + '</button></div>';
   }
-  function folder(s, n, key, body) {
-    var closed = ui.inbClosed[key];
-    return '<div class="grp" style="--c:' + s.color + '"><div class="gh" data-a="grp" data-s="' + key + '"><svg class="gico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><b>' + esc(s.name) + '</b><span class="gn">' + n +
-      '</span><span class="gch' + (closed ? ' c' : '') + '">⌄</span></div>' + (closed ? '' : '<div class="gbody">' + body + '</div>') + '</div>';
+  // Carpetas y subcategorías plegables; lo que abres o cierras se recuerda en este dispositivo
+  var INBK = 'seguimiento.buzon';
+  var inbOpen = (function () { try { return JSON.parse(localStorage.getItem(INBK)) || {}; } catch (e) { return {}; } })();
+  function isOpen(key, def) { return inbOpen[key] == null ? def : !!inbOpen[key]; }
+  function setOpen(key, on) { inbOpen[key] = on; try { localStorage.setItem(INBK, JSON.stringify(inbOpen)); } catch (e) {} }
+  var IC_FOLDER = '<svg class="gico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+  function folder(s, n, key, body, addAttrs) {
+    var open = isOpen(key, n > 0);
+    return '<div class="grp' + (open ? '' : ' shut') + '" style="--c:' + s.color + '"><div class="gh" data-a="grp" data-s="' + key + '" data-def="' + (n > 0 ? 1 : 0) + '">' + IC_FOLDER + '<b>' + esc(s.name) + '</b><span class="gn">' + n + '</span>' +
+      (addAttrs ? '<button class="gadd" data-a="sbadd" ' + addAttrs + ' aria-label="Añadir aquí">＋</button>' : '') +
+      '<span class="gch">⌄</span></div>' + (open ? '<div class="gbody">' + body + '</div>' : '') + '</div>';
+  }
+  function subBlock(scope, sub, items, row) {
+    var key = 's:' + (sub ? sub.id : scope + ':none'), open = isOpen(key, items.length > 0);
+    return '<div class="sbk' + (open ? '' : ' shut') + '"><div class="sbh" data-a="grp" data-s="' + key + '" data-def="' + (items.length ? 1 : 0) + '"><span class="gch">⌄</span>' +
+      '<span class="sbn">' + esc(sub ? sub.name : 'Sin subcategoría') + (sub && sub.archived ? ' (archivada)' : '') + '</span><span class="sbc">' + items.length + '</span>' +
+      '<button class="sbadd" data-a="sbadd" data-scope="' + scope + '" data-sub="' + (sub ? esc(sub.id) : '') + '" aria-label="Añadir tarea aquí">＋</button></div>' +
+      (open ? '<div class="sbb">' + (items.length ? '<div class="sg">' + items.map(row).join('') + '</div>' : '<div class="sbe">Sin tareas. Pulsa ＋ para añadir una.</div>') + '</div>' : '') + '</div>';
   }
   // Buzón de objetivos: ideas sin fecha ni estado, agrupadas por ámbito, para convertirlas después en objetivos.
   function viewIdeas() {
@@ -365,11 +441,10 @@
     setTop('Buzón', ideas.length === 1 ? '1 idea de objetivo' : ideas.length + ' ideas de objetivos');
     var h = tabsBuzon();
     if (!ideas.length) return h + '<div class="empty">Apunta aquí los objetivos que se te ocurran (pulsa +). Luego los conviertes en objetivo con sus fechas.</div>';
-    ui.inbClosed = ui.inbClosed || {};
     C.SCOPES.forEach(function (s) {
       var arr = ideas.filter(function (x) { return x.scope === s.id; });
       if (!arr.length) return;
-      h += folder(s, arr.length, 'i-' + s.id, arr.map(function (x) {
+      h += folder(s, arr.length, 'i:' + s.id, arr.map(function (x) {
         return '<div class="idea" data-a="ideaedit" data-id="' + esc(x.id) + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><span>' + esc(x.title) + '</span><span class="chev">›</span></div>';
       }).join(''));
     });
@@ -379,15 +454,22 @@
     if (ui.inbTab === 'obj') return viewIdeas();
     var items = D.tasks.filter(function (t) { return !t.deleted && !t.date && !C.getState(t); })
       .map(function (t) { return { t: t, d: null }; });
-    setTop('Buzón', items.length + ' tareas sin fecha');
-    var h = tabsBuzon();
-    if (!items.length) return h + '<div class="empty">El buzón está vacío. Las tareas sin fecha aparecen aquí.</div>';
-    ui.inbClosed = ui.inbClosed || {};
-    var sorted = C.sortItems(items);
+    setTop('Buzón', items.length === 1 ? '1 tarea sin fecha' : items.length + ' tareas sin fecha');
+    var h = tabsBuzon() + '<div class="note" style="margin:2px 4px 10px">Toca el calendario de una tarea para ponerla en un día.</div>';
+    var sorted = sortList(items, vs('buzon').o), row = function (x) { return taskRow(x.t, null, false, true); };
     C.SCOPES.forEach(function (s) {
-      var arr = sorted.filter(function (x) { return x.t.scope === s.id; });
-      if (!arr.length) return;
-      h += folder(s, arr.length, s.id, subGroups(arr, s.id, function (x) { return taskRow(x.t, null, false, true); }, false));
+      var arr = sorted.filter(function (x) { return x.t.scope === s.id; }), subs = subsOf(s.id), body = '';
+      var loose = arr.filter(function (x) { return !subById(x.t.sub) || subById(x.t.sub).scope !== s.id; });
+      if (!subs.length) body = loose.length ? '<div class="sg">' + loose.map(row).join('') + '</div>' : '<div class="sbe">Sin tareas. Pulsa ＋ para añadir una.</div>';
+      else {
+        subs.forEach(function (sb) {
+          var its = arr.filter(function (x) { return x.t.sub === sb.id; });
+          if (sb.archived && !its.length) return;
+          body += subBlock(s.id, sb, its, row);
+        });
+        if (loose.length) body += subBlock(s.id, null, loose, row);
+      }
+      h += folder(s, arr.length, 'a:' + s.id, body, 'data-scope="' + s.id + '" data-sub=""');
     });
     return h;
   }
@@ -395,25 +477,22 @@
   function viewProximos() {
     var td = C.today(), h = '';
     setTop('Próximos 7 días', 'Desde mañana');
+    var v = vs('proximos'), all = [];
     for (var i = 1; i <= 7; i++) {
       var d = C.addDays(td, i), items = C.tasksOn(D, d);
-      h += '<div class="sec"><span>' + longDate(d) + '</span></div>' + (items.length ? list(items, false) : '<div class="note" style="margin:0 4px 6px">Sin tareas</div>');
+      if (v.g === 'fecha') {
+        var body = renderList('proximos', items, false, '', function () { return ''; });
+        h += '<div class="sec"><span>' + longDate(d) + '</span>' + (items.length ? '<span class="sn">' + items.length + '</span>' : '') + '</div>' + (body || '<div class="note" style="margin:0 4px 6px">Sin tareas</div>');
+      } else all = all.concat(items);
     }
+    if (v.g !== 'fecha') h = renderList('proximos', all, true, 'No hay tareas en los próximos 7 días.');
     return h;
   }
 
   function viewTodo() {
     var items = allPending();
     setTop('Todo', items.length + ' pendientes');
-    var h = '', last = '#';
-    items.forEach(function (x) {
-      var key = x.d || '';
-      if (key !== last) {
-        h += '<div class="sec">' + (x.d ? (x.d < C.today() ? 'Atrasadas · ' : '') + longDate(x.d) : 'Sin fecha') + '</div>'; last = key;
-      }
-      h += taskRow(x.t, x.d, false);
-    });
-    return h || '<div class="empty">No hay tareas pendientes.</div>';
+    return renderList('todo', items, true, 'No hay tareas pendientes.', function (kk) { return kk ? (kk < C.today() ? 'Atrasada · ' : '') + longDate(kk) : 'Sin fecha'; });
   }
 
   /* Vista de un ámbito: TODAS sus tareas (con fecha, sin fecha, hechas…) con buscador y filtros. */
@@ -443,6 +522,8 @@
     items.forEach(function (x) { (x.done ? done : !x.d ? none : x.d < td ? late : next).push(x); });
     var byDate = function (a, b) { return a.d === b.d ? C.cmp(a, b) : a.d < b.d ? -1 : 1; };
     late.sort(byDate); next.sort(byDate); none = C.sortItems(none);
+    var ao = vs('ambito').o;
+    if (ao !== 'auto') { late = sortList(late, ao); next = sortList(next, ao); none = sortList(none, ao); }
     done.sort(function (a, b) { return (b.d || '') < (a.d || '') ? -1 : (b.d || '') > (a.d || '') ? 1 : 0; });
     var row = function (x) { return taskRow(x.t, x.d, true, false, false, true); };
     if (late.length) h += '<div class="sec">Atrasadas · ' + late.length + '</div>' + late.map(row).join('');
@@ -469,7 +550,7 @@
     return h + '<div id="amb-res">' + ambResults() + '</div>';
   }
 
-  function hasTasks(d) { return D.tasks.some(function (t) { return !t.deleted && C.occursOn(t, d); }); }
+  function hasTasks(d) { return D.tasks.some(function (t) { return !t.deleted && !t.rec && C.occursOn(t, d); }); }
   function dayCell(d, month) {
     var cls = 'day' + (d === C.today() ? ' today' : '') + (d === ui.calSel ? ' sel' : '') + (hasTasks(d) ? ' has' : '') +
       (month && d.slice(0, 7) !== month ? ' out' : '');
@@ -506,7 +587,11 @@
     var mode = D.meta.calMode === 'dia' ? 'dia' : 'lista';
     h += '<div class="seg"><button class="' + (mode === 'lista' ? 'on' : '') + '" data-a="calmode" data-v="lista">Lista</button>' +
       '<button class="' + (mode === 'dia' ? 'on' : '') + '" data-a="calmode" data-v="dia">Día por horas</button></div>';
-    if (mode === 'lista') return h + '<div class="sec">' + longDate(sel) + '</div>' + list(C.tasksOn(D, sel), false, 'Sin tareas este día.');
+    if (mode === 'lista') {
+      var all = C.tasksOn(D, sel), once = all.filter(function (x) { return !x.t.rec; }), nrec = all.length - once.length;
+      return h + '<div class="sec">' + longDate(sel) + '</div><div class="sg">' + list(once, false, 'Nada apuntado este día.') + '</div>' +
+        (nrec ? '<div class="note" style="text-align:center;margin-top:8px">' + (nrec === 1 ? '1 tarea que se repite' : nrec + ' tareas que se repiten') + ' no se muestra' + (nrec === 1 ? '' : 'n') + ' aquí (sí en «Día por horas» y en «Hoy»).</div>' : '');
+    }
     return h + timeline(sel);
   }
 
@@ -698,7 +783,7 @@
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 27</div>';
+    return h + '<div class="ver">Versión 28</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -779,9 +864,7 @@
       drow({ v: 'calendario', i: MI.cal, t: 'Calendario', on: v === 'calendario' }) +
       drow({ v: 'enfoque', i: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 1.5M10 2h4', t: 'Enfoque', on: v === 'enfoque' }) +
       drow({ v: 'objetivos', i: 'M12 4a8 8 0 1 0 .01 0M12 9a3 3 0 1 0 .01 0', t: 'Objetivos', on: v === 'objetivos' }) +
-      '<div class="dsec">Buzón</div>' +
-      drow({ v: 'buzon', tab: 'tareas', i: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5', t: 'Tareas sin fecha', n: inb, on: v === 'buzon' && ui.inbTab !== 'obj' }) +
-      drow({ v: 'buzon', tab: 'obj', i: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5', t: 'Ideas de objetivos', n: ideas, on: v === 'buzon' && ui.inbTab === 'obj' }) +
+      drow({ v: 'buzon', i: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5', t: 'Buzón', n: inb + ideas, on: v === 'buzon' }) +
       '<div class="dsec">Ámbitos</div>';
     C.SCOPES.forEach(function (s) {
       var n = D.tasks.filter(function (t) { return !t.deleted && t.scope === s.id && (t.rec || !C.getState(t)); }).length;
@@ -1082,8 +1165,27 @@
   var NAVMAP = {};
 
   function setTop(t, s) { $('title').textContent = t; $('subtitle').textContent = s || ''; }
-  function render() {
-    $('main').innerHTML = VIEWS[ui.view]();
+  // Botones de arriba a la derecha: Agrupar y ordenar (en las listas) y acceso directo al Buzón
+  var VS_VIEW = { hoy: 'hoy', proximos: 'proximos', todo: 'todo', buzon: 'buzon', ambito: 'ambito' };
+  var IC_INBOX = '<svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5"/></svg>';
+  var IC_SORT = '<svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>';
+  function topActions() {
+    var v = ui.view, h = '', k = VS_VIEW[v];
+    if (k && !(v === 'buzon' && ui.inbTab === 'obj')) h += '<button class="tb" data-a="vsopen" data-v="' + k + '" aria-label="Agrupar y ordenar">' + IC_SORT + '</button>';
+    if (v !== 'buzon' && v !== 'mas' && v !== 'papelera') {
+      var n = D.tasks.filter(function (t) { return !t.deleted && !t.date && !C.getState(t); }).length;
+      h += '<button class="tb" data-a="dnav" data-view="buzon" data-tab="tareas" aria-label="Ir al buzón">' + IC_INBOX + (n ? '<span class="bdg">' + (n > 99 ? '99+' : n) + '</span>' : '') + '</button>';
+    }
+    return h;
+  }
+  var lastHtml = '', lastView = '';
+  function render(force) {
+    if (force) lastHtml = '';
+    var html = VIEWS[ui.view]();
+    // Si nada ha cambiado no se vuelve a pintar (más fluido y no se pierde la posición)
+    if (html !== lastHtml || ui.view !== lastView || !$('main').firstChild) { $('main').innerHTML = html; lastHtml = html; lastView = ui.view; }
+    var ta = topActions(), tr = $('topR');
+    if (tr && tr.innerHTML !== ta) tr.innerHTML = ta;
     var on = NAVMAP[ui.view] || ui.view;
     [].forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.view === on); });
     $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera' || ui.view === 'enfoque');
@@ -1106,6 +1208,7 @@
   if (window.visualViewport) { window.visualViewport.addEventListener('resize', positionSheet); window.visualViewport.addEventListener('scroll', positionSheet); }
   function openSheet(html, cls) {
     var s = $('sheet');
+    s.classList.toggle('keep', !s.classList.contains('hidden')); // si ya estaba abierta, sin animación
     s.innerHTML = '<div class="ov" data-a="close"></div><div class="panel' + (cls ? ' ' + cls : '') + '">' + html + '</div>';
     s.classList.remove('hidden');
     positionSheet();
@@ -1175,6 +1278,22 @@
     drawMenu(); refreshTop();
   }
 
+  // Poner en un día una tarea del buzón, sin abrirla
+  var qsId = null;
+  function openQS(id) {
+    var t = findTask(id), td = C.today(); qsId = id;
+    var opts = [['Hoy', td], ['Mañana', C.addDays(td, 1)], ['Pasado', C.addDays(td, 2)], ['Sig. lunes', nextMonday(td)]];
+    openSheet('<h2>¿Para cuándo?</h2><div class="note" style="margin:-6px 0 12px">' + esc(t.title) + '</div><div class="qd">' +
+      opts.map(function (o) { return '<button data-a="qsday" data-date="' + o[1] + '">' + o[0] + '<small>' + esc(dayWordAbs(o[1])) + '</small></button>'; }).join('') + '</div>' +
+      '<div class="row" style="margin-top:6px"><div style="flex:1.4"><div class="lbl">Otro día</div><input type="date" id="qs-d" min="' + td + '"></div><div style="flex:1"><div class="lbl">Hora (opcional)</div><input type="time" id="qs-t"></div></div>' +
+      '<div class="actions"><button class="btn primary" data-a="qsgo">Poner en ese día</button><button class="btn" data-a="close">Cancelar</button></div>');
+  }
+  function setQS(d, time) {
+    var t = findTask(qsId); if (!t || !d) return;
+    t.date = d; if (time) t.time = time;
+    delete t.order; ui.lastScope = t.scope;
+    save(); closeSheet(); render();
+  }
   function defaultDate() {
     if (ui.view === 'hoy') return C.today();
     if (ui.view === 'calendario') return ui.calSel;
@@ -1271,6 +1390,7 @@
       h += menuItem('deltask', '', t.rec ? 'Eliminar toda la serie' : 'Eliminar', false, 'danger');
     }
     el.innerHTML = h; el.classList.remove('hidden');
+    try { el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
   }
 
   function drawDatePanel() {
@@ -1307,15 +1427,16 @@
     }
     el.innerHTML = h; el.classList.remove('hidden');
     drawRecExtra();
+    try { el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
   }
 
   function openTask(id, ctxDate, preset) {
     var t = id ? findTask(id) : null;
-    var date = t ? t.date : defaultDate();
+    var date = t ? t.date : (preset && preset.nodate ? null : defaultDate());
     form = {
       id: id, ctx: ctxDate || (t && t.date) || null,
-      scope: t ? t.scope : (ui.view === 'ambito' ? ui.scope : ui.lastScope),
-      sub: t && subById(t.sub) ? t.sub : '',
+      scope: t ? t.scope : (preset && preset.scope) || (ui.view === 'ambito' ? ui.scope : ui.lastScope),
+      sub: t ? (subById(t.sub) ? t.sub : '') : (preset && preset.sub) || '',
       priority: t ? (t.priority || 0) : 0,
       date: date || null, time: t && t.time ? t.time : ((preset && preset.time) || null), end: t && t.end ? t.end : null,
       notes: t && t.notes ? t.notes : '',
@@ -1326,15 +1447,16 @@
       menu: null, dateOpen: false, timeOpen: false, recOpen: false, remOpen: false, calMonth: null
     };
     if (form.time && !form.date) form.date = C.today();
-    var h = '<div id="tk-main"><div class="tk-top"><button class="pill" id="tp-scope" data-a="tkmenu" data-v="scope"></button>' +
+    var h = '<div id="tk-main">' +
+      '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
+      '<div class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes" role="button" tabindex="0"></div>' +
+      '<div class="tk-menu hidden" id="tk-menu"></div><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
+      '<div class="tk-bottom"><div class="tk-top"><button class="pill" id="tp-scope" data-a="tkmenu" data-v="scope"></button>' +
       '<button class="pill" id="tp-sub" data-a="tkmenu" data-v="sub"></button><button class="pill" id="tp-prio" data-a="tkmenu" data-v="prio"></button>' +
       (t ? '<button class="pill fpl" data-a="tkfocus" aria-label="Enfocarme en esta tarea">▶' + (focusOfTask(t.id) ? ' ' + fmtShort(focusOfTask(t.id)) : '') + '</button>' +
         '<button class="pill sq" data-a="tkmenu" data-v="more" aria-label="Más opciones">⋯</button>' : '') + '</div>' +
-      '<div class="tk-menu hidden" id="tk-menu"></div>' +
-      '<div class="tk-daterow"><button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-timebox" id="tk-timebox"></div></div><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
-      '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
-      '<div class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes" role="button" tabindex="0"></div>' +
-      '<div class="row" style="margin-top:12px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div>';
+      '<div class="tk-daterow"><button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-timebox" id="tk-timebox"></div></div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div></div>';
     openSheet(h, 'tall');
     refreshTop();
     if (!t) setTimeout(function () { var el = $('f-title'); if (el) el.focus(); }, 250);
@@ -1543,7 +1665,7 @@
       if (d.hasEnd) d.task.end = hm(d.s + d.dur);
       save();
     }
-    render();
+    render(true);
   }
   function moveDrag(p) {
     if (drag.tl) { moveTlDrag(p); return; }
@@ -1565,7 +1687,7 @@
     tasks.forEach(function (t, k) { t.order = k + 1; }); // la lista queda fijada como se ve
     drag.row.classList.remove('drag'); document.body.classList.remove('dragging');
     drag = null; noClickUntil = Date.now() + 400;
-    save(); render();
+    save(); render(true);
   }
   function pressMove(e) {
     var p = pt(e);
@@ -1617,6 +1739,16 @@
       case 'nav': closeSheet(); go(el.dataset.view); break;
       case 'fab': ui.view === 'objetivos' ? openGoal() : ui.view === 'buzon' && ui.inbTab === 'obj' ? openIdea() : openTask(); break;
       case 'menu': openDrawer(); break;
+      case 'vsopen': openVs(v); break;
+      case 'vsset':
+        D.meta.vs = D.meta.vs || {}; var vk = ui.vsk, cur0 = D.meta.vs[vk] || {};
+        cur0[el.dataset.k] = el.dataset.k === 'hd' ? !!v : v; D.meta.vs[vk] = cur0;
+        save(); render(); openVs(vk); break;
+      case 'vsreset':
+        var lt = listTasks(ui.vsk), nr = lt.filter(function (x) { return x.order != null; }).length;
+        if (!nr) { alert('En esta lista no hay nada ordenado a mano.'); break; }
+        if (confirm('¿Quitar el orden que has puesto a mano en ' + nr + (nr === 1 ? ' tarea' : ' tareas') + '? Volverán a ordenarse según «Ordenar por».')) { lt.forEach(function (x) { delete x.order; }); save(); closeSheet(); render(); }
+        break;
       case 'tkfocus':
         var fid = form.id; saveTask();
         if (!form) { ui.fsel = { task: fid, scope: null }; if (D.focus && D.focus.run) { D.focus.run.task = fid; D.focus.run.scope = findTask(fid).scope; save(); } ui.fdone = null; go('enfoque'); }
@@ -1661,7 +1793,13 @@
       case 'toggle': t = findTask(id); toggleState(t, d || t.date); break;
       case 'edit': openTask(id, d); break;
       case 'scope': if (ui.scope !== el.dataset.scope) ui.af = null; ui.scope = el.dataset.scope; render(); break;
-      case 'grp': ui.inbClosed = ui.inbClosed || {}; ui.inbClosed[el.dataset.s] = !ui.inbClosed[el.dataset.s]; render(); break;
+      case 'grp': setOpen(el.dataset.s, !isOpen(el.dataset.s, el.dataset.def === '1')); render(); break;
+      case 'sbadd': openTask(null, null, { scope: el.dataset.scope, sub: el.dataset.sub || '', nodate: true }); break;
+      case 'qsched': openQS(id); break;
+      case 'qsday': setQS(el.dataset.date); break;
+      case 'qsgo':
+        if (!$('qs-d').value) { $('qs-d').focus(); break; }
+        setQS($('qs-d').value, $('qs-t').value); break;
       case 'wk': ui.weekOff += +el.dataset.n; render(); break;
       case 'cell':
         D.log[d] = D.log[d] || {};
