@@ -512,3 +512,73 @@ button:active,.gh:active,.sbh:active{opacity:.62}
 .panel.tall.form2 .tk-notesbtn .npv{flex:none;max-height:112px;overflow-y:auto}
 .grp.amb{padding:6px 8px 8px}
 .grp.amb .gbody{background:none;padding:0 2px}
+/* v31: Gestor (dinero) */
+.mintro b{font-size:18px}
+.mintro p{color:var(--muted);font-size:14.5px;line-height:1.45;margin:8px 0}
+.mintro .btn{margin-top:12px}
+.mhero{padding:16px}
+.mhero>small{color:var(--muted);font-size:13px}
+.mbig{display:block;font-size:34px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums;margin:2px 0 12px}
+.neg{color:#ff6b6b!important}
+.pos{color:#34c759}
+.in{color:#34c759}
+.macc{display:flex;gap:8px}
+.macc>div{flex:1;background:var(--card2);border-radius:12px;padding:9px 11px;min-width:0}
+.macc span{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px}
+.macc i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.macc b{display:block;font-size:17px;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bud{padding:9px 0;border-top:1px solid var(--line)}
+.bud:first-child{border-top:0;padding-top:2px}
+.bh{display:flex;align-items:center;gap:8px;font-size:15.5px}
+.bh i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.bh span{flex:1;min-width:0}
+.bh b{font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bud .qbar{display:block;height:7px;margin:7px 0 0 18px}
+.bud small{display:block;color:var(--muted);font-size:12.5px;margin:5px 0 0 18px}
+.mper{margin:18px 2px 6px}
+.mper .name{font-size:15.5px;text-transform:none}
+.mper .ar[disabled]{pointer-events:none}
+.msum .mvrow span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.mclose{border-top:1px solid var(--line);margin-top:6px;padding-top:10px!important;font-weight:600}
+.mday{margin:12px 4px 6px;color:var(--muted);font-size:13px;font-weight:600}
+.mday::first-letter{text-transform:uppercase}
+.mov{position:relative;display:flex;align-items:center;gap:10px;background:var(--card);border-radius:14px;margin-bottom:8px;padding:11px 14px 11px 16px;overflow:hidden;cursor:pointer}
+.mov .bar{position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c)}
+.mov .body{flex:1;min-width:0}
+.mov .t{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mov .m{font-size:12.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mamt{flex:none;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mamt.tr{color:var(--muted);font-weight:600}
+.mov:active{opacity:.7}
+.mkind{margin:2px 0 12px}
+.mamtin{display:flex;align-items:center;gap:6px;background:var(--card2);border-radius:14px;padding:4px 14px;margin-bottom:10px}
+.mamtin span{font-size:26px;font-weight:700;color:var(--muted)}
+.mamtin.gasto span:first-child{color:#ff6b6b}
+.mamtin.ingreso span:first-child{color:#34c759}
+.mamtin input{background:none;border:0;padding:10px 0;font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;flex:1}
+.chip.dimc{color:var(--muted);background:none;border:1.5px dashed var(--line)}
+.form2 .lbl{margin:14px 0 6px}
+.form2 .seg.sm{margin:0}
+.mdet{margin-top:10px;background:var(--card2);border-radius:12px;padding:10px 12px}
+.mdet summary{color:var(--muted);font-size:14px;cursor:pointer}
+.mdet input{background:var(--card)}
+.msplit input{text-align:center}
+/* v32: panel «Fecha» (fecha, hora, recordar y repetir juntos, como TickTick) */
+.panel.dtmode #tk-main{display:none}
+.dtv{display:flex;flex-direction:column}
+.dth{display:flex;align-items:center;justify-content:space-between;margin:0 0 10px}
+.dth b{font-size:17px}
+.dtb{width:46px;height:46px;border-radius:50%;background:var(--card2);font-size:19px;display:flex;align-items:center;justify-content:center;color:var(--text)}
+.dtb.ok{background:var(--accent);color:#fff;font-size:22px;font-weight:700}
+.dtv .qd button{background:var(--card2)}
+.dtv .mini{margin:6px 0 4px}
+.dtv .calhead .name{font-size:16px}
+.dtv .calgrid{background:none;padding:0;row-gap:4px}
+.dtv .day{height:42px;font-size:16px;background:none!important}
+.dtv .day span{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.dtv .day.sel span{background:var(--accent);color:#fff;font-weight:700}
+.dtv .day.today:not(.sel) span{color:var(--accent);font-weight:700}
+.dtv .dtcard{margin-top:10px}
+.dtbox{display:flex;gap:6px;padding-top:4px}
+.dtclear{margin:22px auto 4px;color:#ff6b6b;font-size:16px;padding:8px 20px}
+#fv-date{display:block;text-align:right}
