@@ -807,7 +807,7 @@
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 32</div>';
+    return h + '<div class="ver">Versión 33</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -1223,72 +1223,95 @@
       '<div class="qbar"><b style="width:' + p + '%;' + (over ? 'background:#ff6b6b' : '') + '"></b></div>' +
       '<small>' + (over ? 'Te has pasado ' + eur(-left) + ' · ' : '') + 'Gastado ' + eur(spent) + ' de ' + eur(total) + (extra ? ' · ' + extra : '') + '</small></div>';
   }
+  // Resumen de un periodo (ingresos, gastos, reparto de la nómina y lo que pasó al ahorro)
+  function perSummary(st, isCur, S) {
+    var lines = [['Ingresos', st.nom + st.extra, 'in'], ['Gastos fijos', -st.gF], ['Libres de culpa', -st.gL], ['Invertido', -st.gI], ['Pagado con ahorros', -st.gA]];
+    if (st.adj) lines.push(['Ajustes', st.adj, st.adj > 0 ? 'in' : '']);
+    var h = '<div class="card msum">' + lines.filter(function (x, i) { return i < 3 || x[1]; }).map(function (x) {
+      return '<div class="mvrow"><span>' + x[0] + '</span><span class="' + (x[2] || '') + '">' + eur(x[1], x[2] === 'in') + '</span></div>';
+    }).join('');
+    if (st.nom) h += '<div class="note" style="margin:4px 0 0">Nómina ' + eur(st.nom) + ': ' + eur(st.asigF) + ' a fijos, ' + eur(st.asigL) + ' a libres, ' + eur(st.asigI) + ' a inversión y ' + eur(st.asigA) + ' al ahorro.</div>';
+    var ts = isCur ? S.fijos + S.libres : st.toSave;
+    return h + '<div class="mvrow mclose"><span>' + (isCur ? 'Si cerrara hoy, al ahorro' : 'Pasó al ahorro al cerrar') + '</span><span class="' + (ts < 0 ? 'neg' : 'pos') + '">' + eur(ts, true) + '</span></div></div>';
+  }
+  // Gasto por subcategoría de un periodo
+  function perSubs(st) {
+    var keys = Object.keys(st.subs), noSub = st.gF + st.gL - keys.reduce(function (a, k) { return a + st.subs[k]; }, 0);
+    var rows = keys.map(function (k) { var p = k.split('|'); return { n: p[1], cat: p[0], c: st.subs[k] }; });
+    if (noSub > 0) rows.push({ n: 'Sin subcategoría', cat: '', c: noSub });
+    rows.sort(function (a, b) { return b.c - a.c; });
+    var all = st.gF + st.gL;
+    if (!rows.length || all <= 0) return '';
+    return '<div class="sec">¿En qué se va?</div><div class="card">' + rows.map(function (r) {
+      var p = Math.round(100 * r.c / all), col = r.cat ? MY.cat(r.cat).color : '#8d8d96';
+      return '<div class="frow" style="--c:' + col + '"><div class="ft"><i></i><span>' + esc(r.n) + '</span><b>' + eur(r.c) + '</b></div>' +
+        '<div class="fl2"><span class="qbar"><b style="width:' + Math.max(p, 2) + '%"></b></span><small>' + p + ' %' + (r.cat ? ' · ' + MY.cat(r.cat).short : '') + '</small></div></div>';
+    }).join('') + '</div>';
+  }
+  // Movimientos de un periodo, agrupados por día
+  function perMoves(M, P, empty) {
+    var td = C.today(), list = MY.movIn(M, P.start, P.end), h = '', lastD = '';
+    if (!list.length) return '<div class="empty">' + empty + '</div>';
+    list.forEach(function (m) {
+      if (m.date !== lastD) { h += '<div class="mday">' + (m.date === td ? 'Hoy' : m.date === C.addDays(td, -1) ? 'Ayer' : longDate(m.date)) + '</div>'; lastD = m.date; }
+      h += movRow(m);
+    });
+    return h;
+  }
   function viewGestor() {
     var M = MD(), td = C.today(), S = MY.calc(M, td);
     if (!S) {
       setTop('Gestor', 'Tu dinero');
       return '<div class="card mintro"><b>Empieza a llevar tu dinero aquí</b><p>Apunta lo que te entra y lo que gastas. La app reparte cada nómina entre gastos fijos, gastos libres de culpa, inversión y ahorro, y te dice cuánto te queda de cada cosa.</p>' +
-        '<p>Cada periodo va del día 5 al día 4 del mes siguiente. Al empezar el siguiente, lo que te sobre de fijos y libres pasa solo al ahorro.</p>' +
+        '<p>Cada mes va del día 5 al día 4 del mes siguiente. Al empezar el siguiente, lo que te sobre de fijos y libres pasa solo al ahorro.</p>' +
         '<button class="btn primary block" data-a="moset">Configurar el punto de partida</button></div>';
     }
     var cur = S.cur, left = C.diffDays(td, cur.end);
-    setTop('Gestor', 'Periodo ' + perName(S.period) + ' · ' + (left === 0 ? 'cierra hoy' : left === 1 ? 'cierra mañana' : 'cierra en ' + left + ' días'));
-    var h = '<div class="card mhero"><small>Dinero total</small><b class="mbig' + (S.total < 0 ? ' neg' : '') + '">' + eur(S.total) + '</b><div class="macc">' +
-      ['t', 'e'].map(function (k) { return '<div style="--c:' + ACC[k].c + '"><span><i></i>' + ACC[k].n + '</span><b>' + eur(S[k]) + '</b></div>'; }).join('') + '</div></div>';
-    // presupuestos del periodo actual
+    setTop('Gestor', 'Mes del ' + perName(S.period) + ' · ' + (left === 0 ? 'cierra hoy' : left === 1 ? 'cierra mañana' : 'cierra en ' + left + ' días'));
+    // Disponible = lo que tienes menos el ahorro (que se reserva primero en la tarjeta)
+    var disp = S.tLibre + S.eLibre;
+    var h = '<div class="card mhero"><div class="mhtop"><div><small>Disponible</small><b class="mbig' + (disp < 0 ? ' neg' : '') + '">' + eur(disp) + '</b></div>' +
+      '<button class="madd" data-a="moadd" aria-label="Apuntar movimiento">+</button></div><div class="macc">' +
+      [['t', S.tLibre], ['e', S.eLibre]].map(function (x) { return '<div style="--c:' + ACC[x[0]].c + '"><span><i></i>' + ACC[x[0]].n + '</span><b>' + eur(x[1]) + '</b></div>'; }).join('') + '</div>' +
+      '<div class="msub">Ahorro aparte ' + eur(Math.max(S.ahorro, 0)) + ' · en total tienes ' + eur(S.total) + '</div></div>';
+    // presupuestos del mes actual
     var tf = cur.fIni + cur.asigF, tl = cur.lIni + cur.asigL;
     var perDay = S.libres > 0 ? eur(Math.floor(S.libres / (left + 1))) + '/día' : '';
-    h += '<div class="sec">Te queda este periodo</div><div class="card">' +
+    h += '<div class="sec">Este mes</div><div class="card">' +
       budRow('Gastos fijos', MY.cat('fijos').color, S.fijos, tf, cur.gF) +
       budRow('Libres de culpa', MY.cat('libres').color, S.libres, tl, cur.gL, perDay) +
       '<div class="bud" style="--c:' + MY.cat('inversion').color + '"><div class="bh"><i></i><span>Inversión pendiente</span><b>' + eur(S.inversion) + '</b></div>' +
-      '<small>Se acumula de un periodo a otro' + (S.invTot ? ' · invertido desde el inicio ' + eur(S.invTot) : '') + '</small></div>' +
+      '<small>Se acumula de un mes a otro' + (S.invTot ? ' · invertido desde el inicio ' + eur(S.invTot) : '') + '</small></div>' +
       '<div class="bud" style="--c:#34c759"><div class="bh"><i></i><span>Ahorro</span><b class="' + (S.ahorro < 0 ? 'neg' : 'pos') + '">' + eur(S.ahorro) + '</b></div>' +
-      '<small>' + (S.ahorro < 0 ? 'Estás usando dinero reservado para otros presupuestos' : 'En tarjeta ' + eur(S.tAhorro) + ' · en efectivo ' + eur(S.eAhorro)) + '</small></div></div>';
-    // periodo que se mira
-    var vp = ui.gPer && ui.gPer <= S.period.start && ui.gPer >= MY.periodOf(S.cfg.start, S.cfg.day).start ? ui.gPer : S.period.start;
-    var P = MY.periodOf(vp, S.cfg.day), st = MY.statsFor(S, P.start), isCur = P.start === S.period.start;
-    var first = MY.periodOf(S.cfg.start, S.cfg.day).start;
-    h += '<div class="calhead mper"><button class="ar" data-a="moper" data-n="-1" aria-label="Periodo anterior"' + (P.start <= first ? ' disabled style="opacity:.3"' : '') + '>‹</button>' +
-      '<span class="name">' + perName(P) + (isCur ? ' · actual' : '') + '</span><button class="ar" data-a="moper" data-n="1" aria-label="Periodo siguiente"' + (isCur ? ' disabled style="opacity:.3"' : '') + '>›</button></div>';
-    // resumen del periodo
-    if (st) {
-      var lines = [['Ingresos', st.nom + st.extra, 'in'], ['Gastos fijos', -st.gF], ['Libres de culpa', -st.gL], ['Invertido', -st.gI], ['Pagado con ahorros', -st.gA]];
-      if (st.adj) lines.push(['Ajustes', st.adj, st.adj > 0 ? 'in' : '']);
-      h += '<div class="card msum">' + lines.filter(function (x, i) { return i < 3 || x[1]; }).map(function (x) {
-        return '<div class="mvrow"><span>' + x[0] + '</span><span class="' + (x[2] || '') + '">' + eur(x[1], x[2] === 'in') + '</span></div>';
-      }).join('');
-      if (st.nom) h += '<div class="note" style="margin:4px 0 0">Nómina ' + eur(st.nom) + ': ' + eur(st.asigF) + ' a fijos, ' + eur(st.asigL) + ' a libres, ' + eur(st.asigI) + ' a inversión y ' + eur(st.asigA) + ' al ahorro.</div>';
-      var ts = isCur ? S.fijos + S.libres : st.toSave;
-      h += '<div class="mvrow mclose"><span>' + (isCur ? 'Si el periodo cerrara hoy, al ahorro' : 'Pasó al ahorro al cerrar') + '</span><span class="' + (ts < 0 ? 'neg' : 'pos') + '">' + eur(ts, true) + '</span></div></div>';
-      // en qué se va
-      var keys = Object.keys(st.subs), noSub = st.gF + st.gL - keys.reduce(function (a, k) { return a + st.subs[k]; }, 0);
-      var rows = keys.map(function (k) { var p = k.split('|'); return { n: p[1], cat: p[0], c: st.subs[k] }; });
-      if (noSub > 0) rows.push({ n: 'Sin subcategoría', cat: '', c: noSub });
-      rows.sort(function (a, b) { return b.c - a.c; });
-      var all = st.gF + st.gL;
-      if (rows.length && all > 0) {
-        h += '<div class="sec">¿En qué se va?</div><div class="card">' + rows.map(function (r) {
-          var p = Math.round(100 * r.c / all), col = r.cat ? MY.cat(r.cat).color : '#8d8d96';
-          return '<div class="frow" style="--c:' + col + '"><div class="ft"><i></i><span>' + esc(r.n) + '</span><b>' + eur(r.c) + '</b></div>' +
-            '<div class="fl2"><span class="qbar"><b style="width:' + Math.max(p, 2) + '%"></b></span><small>' + p + ' %' + (r.cat ? ' · ' + MY.cat(r.cat).short : '') + '</small></div></div>';
-        }).join('') + '</div>';
-      }
-    }
-    // movimientos del periodo, por día
-    var list = MY.movIn(M, P.start, P.end);
-    h += '<div class="sec">Movimientos <span class="sn">' + list.length + '</span></div>';
-    if (!list.length) h += '<div class="empty">' + (isCur ? 'Aún no hay movimientos en este periodo. Pulsa + para apuntar uno.' : 'No hubo movimientos en este periodo.') + '</div>';
-    var lastD = '';
-    list.forEach(function (m) {
-      if (m.date !== lastD) { h += '<div class="mday">' + (m.date === td ? 'Hoy' : m.date === C.addDays(td, -1) ? 'Ayer' : longDate(m.date)) + '</div>'; lastD = m.date; }
-      h += movRow(m);
-    });
+      '<small>' + (S.ahorro < 0 ? 'Estás usando dinero reservado para otros presupuestos' : 'En tarjeta ' + eur(S.tAhorro) + ' · en efectivo ' + eur(S.eAhorro) +
+        ' · al cerrar el mes ' + (S.fijos + S.libres >= 0 ? 'se le suma ' : 'se le resta ') + eur(Math.abs(S.fijos + S.libres))) + '</small></div></div>';
+    h += perSubs(cur);
+    var nMov = MY.movIn(M, S.period.start, S.period.end).length;
+    h += '<div class="sec">Últimos movimientos <span class="sn">' + nMov + '</span></div>' + perMoves(M, S.period, 'Aún no hay movimientos este mes. Pulsa + para apuntar uno.');
+    var nh = S.hist.length;
     h += '<div class="card set" style="margin-top:16px">' +
+      mrow({ a: 'mohist', i: 'list', c: '#4a9bff', t: 'Registro de meses anteriores', sub: nh ? (nh === 1 ? '1 mes cerrado' : nh + ' meses cerrados') + ' · resumen y movimientos' : 'Aún no hay ningún mes cerrado' }) +
       mrow({ a: 'moadj', i: 'bank', c: '#34c759', t: 'Cuadrar con el banco', sub: 'Si se te olvidó apuntar algo, ajusta los saldos reales' }) +
-      mrow({ a: 'moset', i: 'sliders', c: '#ff7a21', t: 'Ajustes del Gestor', sub: 'Reparto ' + S.cfg.split.fijos + '/' + S.cfg.split.libres + '/' + S.cfg.split.inversion + '/' + S.cfg.split.ahorro + ' · punto de partida · subcategorías' }) + '</div>' +
-      '<div class="mnote">Reparto de la nómina: fijos / libres / inversión / ahorro.</div>';
+      mrow({ a: 'moset', i: 'sliders', c: '#ff7a21', t: 'Ajustes del Gestor', sub: 'Reparto ' + S.cfg.split.fijos + '/' + S.cfg.split.libres + '/' + S.cfg.split.inversion + '/' + S.cfg.split.ahorro + ' (fijos/libres/inversión/ahorro) · punto de partida · subcategorías' }) + '</div>';
     return h;
+  }
+  // Registro de meses anteriores
+  function openHist() {
+    var S = MY.calc(MD(), C.today()); if (!S) return;
+    var h = '<div class="tkh"><button class="tkx" data-a="close">Cerrar</button><b>Meses anteriores</b><span style="min-width:70px"></span></div>';
+    if (!S.hist.length) h += '<div class="empty">Aún no hay ningún mes cerrado. El primero se cierra el ' + esc(longDate(C.addDays(S.period.end, 1))) + '.</div>';
+    S.hist.slice().reverse().forEach(function (st) {
+      var g = st.gF + st.gL + st.gI + st.gA;
+      h += '<button class="mhist" data-a="mohistp" data-v="' + st.start + '"><div><b>' + perName(st) + '</b><small>Ingresos ' + eur(st.nom + st.extra) + ' · gastos ' + eur(g) + '</small></div>' +
+        '<span class="' + (st.toSave < 0 ? 'neg' : 'pos') + '">' + eur(st.toSave, true) + '<small>al ahorro</small></span><span class="chev">›</span></button>';
+    });
+    openSheet(h, 'tall form2');
+  }
+  function openHistP(start) {
+    var M = MD(), S = MY.calc(M, C.today()), st = MY.statsFor(S, start); if (!st) return openHist();
+    ui.gHist = start;
+    openSheet('<div class="tkh"><button class="tkx" data-a="mohist">‹ Volver</button><b>' + perName(st) + '</b><span style="min-width:70px"></span></div>' +
+      perSummary(st, false, S) + perSubs(st) + '<div class="sec">Movimientos</div>' + perMoves(M, st, 'No hubo movimientos este mes.'), 'tall form2');
   }
 
   // Formulario de movimiento
@@ -1365,7 +1388,6 @@
     if (mf.cat === 'fijos' || mf.cat === 'libres') { if (mf.sub) m.sub = mf.sub; else delete m.sub; } else delete m.sub;
     if (mf.cat === 'nomina') { if (!wasNom || !m.sp) m.sp = JSON.parse(JSON.stringify(cf.split)); } else delete m.sp;
     ui.gLastCat = mf.kind === 'gasto' ? mf.cat : ui.gLastCat; ui.gLastAcc = m.acc;
-    ui.gPer = null;
     save(); closeSheet(); mf = null; render();
   }
 
@@ -1403,7 +1425,7 @@
     if (!r.list.length) { closeSheet(); return; }
     var M = MD(), td = C.today(), now = Date.now();
     r.list.forEach(function (x, i) { M.mov.push({ id: C.uid(), at: now + i, date: td, cat: 'ajuste', c: x.c, acc: x.acc, to: ui.gAdjTo, txt: 'Ajuste para cuadrar con el banco' }); });
-    ui.gPer = null; save(); closeSheet(); render();
+    save(); closeSheet(); render();
   }
 
   // Ajustes del Gestor: punto de partida, reparto y subcategorías
@@ -1456,7 +1478,7 @@
     var start = $('ms-start').value || old.start;
     if (!start) { msg.textContent = 'Elige el día en que empiezas.'; return; }
     M.cfg = { start: start, day: old.day || 5, split: sp, init: init, subs: old.subs || JSON.parse(JSON.stringify(MY.SUBS)) };
-    ui.gPer = null; save(); closeSheet(); render();
+    save(); closeSheet(); render();
   }
   function subEdit(a, k, i) {
     var M = MD(); if (!M.cfg) return;
@@ -1494,7 +1516,7 @@
     if (tr && tr.innerHTML !== ta) tr.innerHTML = ta;
     var on = NAVMAP[ui.view] || ui.view;
     [].forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.view === on); });
-    $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera' || ui.view === 'enfoque');
+    $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera' || ui.view === 'enfoque' || ui.view === 'gestor');
     drawFbar();
     if (ui.view !== 'enfoque' || !(D.focus && D.focus.run) || D.focus.run.pz) wake(false); else wake(true);
     ensureG();
@@ -2186,9 +2208,9 @@
       case 'mosave': saveMov(); break;
       case 'model':
         if (confirm('¿Borrar este movimiento? Los saldos se recalculan.')) { MD().mov = MD().mov.filter(function (x) { return x.id !== mf.id; }); save(); closeSheet(); mf = null; render(); } break;
-      case 'moper':
-        var Sx = MY.calc(MD(), C.today()), cp = MY.periodOf(ui.gPer || Sx.period.start, Sx.cfg.day);
-        ui.gPer = (+el.dataset.n < 0 ? MY.prevPeriod(cp, Sx.cfg.day) : MY.nextPeriod(cp, Sx.cfg.day)).start; render(); break;
+      case 'moadd': openMov(); break;
+      case 'mohist': openHist(); break;
+      case 'mohistp': openHistP(v); break;
       case 'moadj': openAdj(); break;
       case 'moadjto': ui.gAdjTo = v; [].forEach.call($('ad-to').children, function (c) { c.classList.toggle('on', c.dataset.v === v); }); adjPreview(); break;
       case 'moadjgo': saveAdj(); break;
