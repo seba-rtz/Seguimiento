@@ -57,9 +57,11 @@
   }
   // Cumplimiento por ámbito en un trimestre: días marcados entre días transcurridos.
   // Cuenta desde el primer día con registro (si cae dentro del trimestre) hasta hoy o el fin del trimestre.
+  var REG_START = '2026-11-27';
   function quarterStats(data, q, td) {
-    var qs = quarterStart(q), qe = quarterEnd(q), fm = firstMarkDay(data);
-    var from = (fm && fm > qs) ? fm : qs, to = td < qe ? td : qe;
+    // El registro cuenta desde el 27 nov 2026 (lo anterior no se tiene en cuenta)
+    var qs = quarterStart(q), qe = quarterEnd(q), fm = REG_START;
+    var from = fm > qs ? fm : qs, to = td < qe ? td : qe;
     var res = { q: q, qs: qs, qe: qe, from: from, to: to, days: 0, scopes: {} };
     SCOPES.forEach(function (s) { res.scopes[s.id] = 0; });
     if (!fm || from > to) return res;
@@ -231,7 +233,7 @@
   function streak(data, id, td) {
     var d = td, n = 0;
     if (!(data.log[d] && data.log[d][id])) d = addDays(td, -1);
-    while (data.log[d] && data.log[d][id] && n < 5000) { n++; d = addDays(d, -1); }
+    while (d >= REG_START && data.log[d] && data.log[d][id] && n < 5000) { n++; d = addDays(d, -1); }
     return n;
   }
 
