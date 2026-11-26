@@ -400,3 +400,46 @@ body.hasfbar #fab{bottom:calc(134px + var(--sab))}
 #tp-scope,#tp-sub{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
 #tp-scope{flex-shrink:0}
 #tp-sub{flex:1 1 auto;max-width:max-content}
+/* v28: cabecera con acciones */
+#topR{display:flex;gap:4px;flex:none}
+.tb{position:relative;width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:12px;color:var(--text)}
+.tb svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tb .bdg{position:absolute;top:3px;right:2px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center}
+.sec .sn{color:var(--muted);font-weight:600;font-size:12px;background:var(--card);border-radius:999px;padding:1px 8px;text-transform:none;letter-spacing:0}
+.gsec{display:flex;align-items:center;gap:8px}
+.gsec i{width:9px;height:9px;border-radius:50%;flex:none}
+/* v28: formulario con ámbito, prioridad y fecha abajo */
+.panel.tall .tk-bottom{flex:none;border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.tk-bottom .tk-top{margin-bottom:4px}
+.panel.tall #f-title{flex:none}
+.tk-menu,.tk-datepanel{flex:none;margin-top:8px}
+/* v28: buzón plegable */
+.grp.shut{padding-bottom:4px}
+.grp .gch{transition:transform .15s}
+.grp.shut>.gh .gch{transform:rotate(-90deg)}
+.gadd,.sbadd{flex:none;width:30px;height:30px;border-radius:9px;color:var(--muted);font-size:17px;display:flex;align-items:center;justify-content:center}
+.gadd:active,.sbadd:active{background:var(--card2)}
+.sbk{margin:6px 0 2px}
+.sbh{display:flex;align-items:center;gap:8px;padding:7px 6px 7px 8px;border-radius:10px;background:color-mix(in srgb,var(--c) 8%,transparent);border-left:3px solid color-mix(in srgb,var(--c) 60%,transparent);cursor:pointer}
+.sbh .gch{color:var(--muted);font-size:14px;width:14px;text-align:center;transition:transform .15s}
+.sbk.shut .sbh .gch{transform:rotate(-90deg)}
+.sbn{flex:1;min-width:0;font-size:14.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sbc{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.sbb{padding:2px 0 2px 14px}
+.sbe{color:var(--muted);font-size:13.5px;padding:8px 2px 6px}
+.grp .gbody>.sbe{padding:8px 2px}
+.task .qs{flex:none;width:36px;height:36px;margin:-4px -4px -4px 0;border-radius:10px;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.task .qs svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.task .qs:active{background:var(--card2);color:var(--accent)}
+.qd button small{display:block;font-size:11px;color:var(--muted);margin-top:2px;font-weight:400}
+/* v28: respuesta inmediata al tocar */
+button,.task .body,.gh,.sbh{-webkit-tap-highlight-color:transparent}
+button:active,.gh:active,.sbh:active{opacity:.62}
+.task .body:active{opacity:.7}
+#nav button:active{opacity:.5}
+#sheet:not(.hidden) .panel{animation:sheetIn .2s cubic-bezier(.2,.8,.3,1)}
+@keyframes sheetIn{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+#sheet:not(.hidden) .ov{animation:ovIn .2s ease}
+@keyframes ovIn{from{opacity:0}}
+#sheet .panel>.qd button{background:var(--card2)}
+#sheet.keep .panel,#sheet.keep .ov{animation:none}
