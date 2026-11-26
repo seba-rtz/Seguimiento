@@ -105,20 +105,57 @@
     clearTimeout(planT);
     planT = setTimeout(function () { doPlan(force); }, force ? 100 : 4000);
   }
+  // Avisos de cada tarea: t.rem = lista de minutos de antelación (0 = a la hora). Sin t.rem: a la hora si tiene hora, ninguno si no.
+  // Las tareas sin hora avisan a la hora de «D.meta.remHour» (09:00 por defecto) del día que toque.
+  var REM_T = [[0, 'A la hora'], [10, '10 min antes'], [30, '30 min antes'], [60, '1 h antes'], [1440, '1 día antes'], [2880, '2 días antes'], [4320, '3 días antes'], [10080, '1 semana antes']];
+  var REM_D = [[0, 'El mismo día'], [1440, '1 día antes'], [2880, '2 días antes'], [4320, '3 días antes'], [10080, '1 semana antes']];
+  function remsOf(rem, timed) {
+    var r = rem ? rem.slice() : (timed ? [0] : []);
+    if (!timed) r = r.filter(function (m) { return m === 0 || m >= 1440; });
+    return r.sort(function (a, b) { return a - b; });
+  }
+  function remHour() { return D.meta.remHour || '09:00'; }
+  function remRel(m) {
+    if (m < 60) return 'en ' + m + ' min';
+    if (m < 1440) return 'en ' + (m / 60) + ' h';
+    if (m === 1440) return 'mañana';
+    if (m === 10080) return 'en 1 semana';
+    return 'en ' + (m / 1440) + ' días';
+  }
+  function remLabel(rem, timed) {
+    var r = remsOf(rem, timed), L = timed ? REM_T : REM_D;
+    if (!r.length) return 'Ninguno';
+    return r.map(function (m) { var o = L.filter(function (x) { return x[0] === m; })[0]; return o ? o[1] : m + ' min antes'; }).join(', ');
+  }
   function doPlan(force) {
-    var list = [], now = Date.now(), td = C.today();
-    for (var i = 0; i <= 14; i++) {
+    var list = [], now = Date.now(), td = C.today(), lim = now + 15 * 864e5, rh = remHour().split(':');
+    for (var i = 0; i <= 22; i++) {
       var d = C.addDays(td, i);
       C.tasksOn(D, d).forEach(function (x) {
         var t = x.t;
-        if (!t.time || C.getState(t, x.d)) return;
-        var w = C.parse(x.d), p = t.time.split(':');
+        if (C.getState(t, x.d)) return;
+        var w = C.parse(x.d), timed = !!t.time, p = timed ? t.time.split(':') : rh;
         w.setHours(+p[0], +p[1], 0, 0);
-        if (w.getTime() <= now) return;
-        var sc = C.scopeById(t.scope);
-        list.push({ enviar_en: w.toISOString(), titulo: t.title, cuerpo: sc.name + ' · ' + t.time + (t.end ? '–' + t.end : '') });
+        var sc = C.scopeById(t.scope), cuando = timed ? t.time + (t.end ? '–' + t.end : '') : '';
+        remsOf(t.rem, timed).forEach(function (m) {
+          var at = timed ? w.getTime() - m * 60000 : w.getTime() - Math.floor(m / 1440) * 864e5;
+          if (at <= now || at > lim) return;
+          var cuerpo = sc.name + ' · ' + (m === 0 ? (timed ? cuando : 'hoy') : remRel(m) + ', ' + dayWordAbs(x.d) + (timed ? ' a las ' + t.time : ''));
+          list.push({ enviar_en: new Date(at).toISOString(), titulo: t.title, cuerpo: cuerpo });
+        });
       });
     }
+    // Fin del pomodoro o del descanso en curso (llega aunque la app esté cerrada)
+    var run = D.focus && D.focus.run;
+    if (run && !run.pz && run.mode !== 'crono') {
+      var fin = run.st + run.pt + run.dur * 60000;
+      if (fin > now) {
+        var ft = run.task && findTask(run.task);
+        list.push(run.mode === 'break' ? { enviar_en: new Date(fin).toISOString(), titulo: 'Fin del descanso', cuerpo: 'Cuando quieras, empieza otro enfoque.' }
+          : { enviar_en: new Date(fin).toISOString(), titulo: 'Enfoque terminado', cuerpo: (ft ? ft.title + ' · ' : '') + run.dur + ' min. Toca para tomarte un descanso.' });
+      }
+    }
+    list.sort(function (a, b) { return a.enviar_en < b.enviar_en ? -1 : 1; });
     list = list.slice(0, 200);
     var sig = JSON.stringify(list);
     if (!force && localStorage.getItem('seguimiento.avisos-plan') === sig) return;
@@ -181,6 +218,7 @@
     if (window.Sync) Sync.changed();
   }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function dayWordAbs(s) { var d = C.parse(s); return DIAS[C.weekday(d)].slice(0, 3) + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3); }
   function longDate(s) { var d = C.parse(s); return DIAS[C.weekday(d)] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
   function findTask(id) { return D.tasks.filter(function (t) { return t.id === id; })[0]; }
 
@@ -437,6 +475,15 @@
       (month && d.slice(0, 7) !== month ? ' out' : '');
     return '<button class="' + cls + '" data-a="calsel" data-date="' + d + '">' + C.parse(d).getDate() + '<span class="dot"></span></button>';
   }
+  function calMove(n) {
+    if (ui.calOpen) {
+      var p = ui.calMonth.split('-'), m = new Date(+p[0], +p[1] - 1 + n, 1);
+      ui.calMonth = C.fmt(m).slice(0, 7);
+      var day = Math.min(C.parse(ui.calSel).getDate(), C.dim(m.getFullYear(), m.getMonth() + 1));
+      ui.calSel = ui.calMonth + '-' + C.pad(day);
+    } else { ui.calSel = C.addDays(ui.calSel, 7 * n); ui.calMonth = ui.calSel.slice(0, 7); }
+    render();
+  }
   function viewCal() {
     var sel = ui.calSel, h = '', dh = '';
     DL.forEach(function (l) { dh += '<div class="wd">' + l + '</div>'; });
@@ -444,16 +491,16 @@
       var first = ui.calMonth + '-01', p = first.split('-');
       var start = C.mondayOf(first), cells = '';
       for (var i = 0; i < 42; i++) { var d = C.addDays(start, i); if (i >= 35 && d.slice(0, 7) !== ui.calMonth) break; cells += dayCell(d, ui.calMonth); }
-      h += '<div class="calhead"><button class="ar" data-a="calmove" data-n="-1" aria-label="Anterior">‹</button><button class="name" data-a="caltoggle">' +
+      h += '<div class="calswipe"><div class="calhead"><button class="ar" data-a="calmove" data-n="-1" aria-label="Anterior">‹</button><button class="name" data-a="caltoggle">' +
         MESES[+p[1] - 1] + ' ' + p[0] + ' ▴</button><button class="ar" data-a="calmove" data-n="1" aria-label="Siguiente">›</button></div>' +
-        '<div class="calgrid">' + dh + cells + '</div>';
+        '<div class="calgrid">' + dh + cells + '</div></div>';
     } else {
       var mon = C.mondayOf(sel), cs = '';
       for (var j = 0; j < 7; j++) cs += dayCell(C.addDays(mon, j), null);
       var sd = C.parse(sel);
-      h += '<div class="calhead"><button class="ar" data-a="calmove" data-n="-1" aria-label="Anterior">‹</button><button class="name" data-a="caltoggle">' +
+      h += '<div class="calswipe"><div class="calhead"><button class="ar" data-a="calmove" data-n="-1" aria-label="Anterior">‹</button><button class="name" data-a="caltoggle">' +
         MESES[sd.getMonth()] + ' ' + sd.getFullYear() + ' ▾</button><button class="ar" data-a="calmove" data-n="1" aria-label="Siguiente">›</button></div>' +
-        '<div class="calgrid">' + dh + cs + '</div>';
+        '<div class="calgrid">' + dh + cs + '</div></div>';
     }
     setTop('Calendario', longDate(sel));
     var mode = D.meta.calMode === 'dia' ? 'dia' : 'lista';
@@ -642,14 +689,16 @@
       h += '<div class="sec">Calendarios y avisos</div><div class="card set">' +
         mrow({ a: 'cals', i: 'cal', c: '#a56bff', t: 'Calendarios', sub: 'Solo lectura, en «Día por horas»', val: calUrls().length + (D.meta.uniUrl ? 1 : 0) }) +
         mrow({ a: 'gcalnow', act: 1, i: 'sync', c: '#4a9bff', t: 'Actualizar eventos', sub: gev + (G.warn && G.warn.length ? ' · ' + esc(G.warn.join(' · ')) : '') }) +
-        mrow({ a: D.meta.avisosOn ? 'avisosoff' : 'avisoson', i: 'bell', c: '#ff7a21', t: 'Avisos', sub: 'A la hora exacta de las tareas con hora', tog: !!D.meta.avisosOn }) + '</div>';
+        mrow({ a: D.meta.avisosOn ? 'avisosoff' : 'avisoson', i: 'bell', c: '#ff7a21', t: 'Avisos', sub: 'Los que elijas en cada tarea', tog: !!D.meta.avisosOn }) +
+        (D.meta.avisosOn ? '<label class="mr"><span class="mic" style="--c:#ff7a21"><svg class="i" viewBox="0 0 24 24"><path d="' + MI.bell + '"/></svg></span><span class="mt"><b>Hora para tareas sin hora</b><small>A qué hora llegan sus avisos</small></span>' +
+          '<input type="time" id="s-remhour" class="mtime" value="' + remHour() + '"></label>' : '') + '</div>';
     }
     h += '<div class="sec">Copia de seguridad</div><div class="card set">' +
       mrow({ a: 'export', act: 1, i: 'down', c: '#34c759', t: 'Exportar copia', sub: D.meta.lastBackup ? 'Última copia: ' + longDate(D.meta.lastBackup) : 'Aún no has hecho ninguna copia' }) +
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 26</div>';
+    return h + '<div class="ver">Versión 27</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -728,6 +777,7 @@
     var h = '<div class="dov" data-a="dclose"></div><div class="dpanel"><div class="dtitle">Seguimiento</div>' +
       drow({ v: 'hoy', i: 'M5 12l5 5 9-10', t: 'Hoy', n: pendHoy, on: v === 'hoy' }) +
       drow({ v: 'calendario', i: MI.cal, t: 'Calendario', on: v === 'calendario' }) +
+      drow({ v: 'enfoque', i: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 1.5M10 2h4', t: 'Enfoque', on: v === 'enfoque' }) +
       drow({ v: 'objetivos', i: 'M12 4a8 8 0 1 0 .01 0M12 9a3 3 0 1 0 .01 0', t: 'Objetivos', on: v === 'objetivos' }) +
       '<div class="dsec">Buzón</div>' +
       drow({ v: 'buzon', tab: 'tareas', i: 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5', t: 'Tareas sin fecha', n: inb, on: v === 'buzon' && ui.inbTab !== 'obj' }) +
@@ -749,7 +799,285 @@
   }
   function closeDrawer() { var el = $('drawer'); el.classList.remove('open'); el.classList.add('hidden'); el.innerHTML = ''; }
 
-  var VIEWS = { hoy: viewHoy, buzon: viewBuzon, proximos: viewProximos, todo: viewTodo, ambito: viewAmbito,
+  /* ---------- Enfoque: Pomodoro y cronómetro, con registro de tiempo ---------- */
+  // D.focus = { s: [sesiones], run: temporizador en marcha, pomo: min, brk: min }
+  // sesión: { id, st, en (ms), m (minutos de enfoque), task (id o null), scope (ámbito o null), mode: 'pomo'|'crono'|'manual' }
+  // run: { mode: 'pomo'|'crono'|'break', st, pz (ms en que se pausó, 0 si corre), pt (ms en pausa), dur (min), task, scope }
+  function FD() {
+    if (!D.focus || typeof D.focus !== 'object') D.focus = {};
+    var f = D.focus;
+    if (!Array.isArray(f.s)) f.s = [];
+    if (!f.pomo) f.pomo = 25;
+    if (!f.brk) f.brk = 5;
+    return f;
+  }
+  function fmtDur(m) {
+    m = Math.round(m);
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60), r = m % 60;
+    return h + ' h' + (r ? ' ' + r + ' min' : '');
+  }
+  function fmtShort(m) { m = Math.round(m); if (m < 60) return m + "'"; var h = Math.floor(m / 60), r = m % 60; return h + 'h' + (r ? ' ' + C.pad(r) : ''); }
+  function clock(ms) { var t = Math.max(0, Math.round(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ':' + C.pad(m) : C.pad(m)) + ':' + C.pad(s); }
+  function runElapsed(r) { return (r.pz || Date.now()) - r.st - r.pt; }
+  function sessDay(x) { return C.fmt(new Date(x.st)); }
+  function focusSel() { var f = FD(); return f.run ? { task: f.run.task, scope: f.run.scope } : (ui.fsel || { task: null, scope: null }); }
+  function selLabel(sel) {
+    var t = sel.task && findTask(sel.task);
+    if (t) return { t: t.title, c: C.scopeById(t.scope).color };
+    if (sel.scope) return { t: 'Sin tarea · ' + C.scopeById(sel.scope).name, c: C.scopeById(sel.scope).color };
+    return { t: 'Sin tarea', c: '' };
+  }
+  function scopeOfSel(sel) { var t = sel.task && findTask(sel.task); return t ? t.scope : (sel.scope || null); }
+
+  // Mantener la pantalla encendida mientras corre el temporizador (si el iPhone lo permite)
+  var wakeLock = null;
+  function wake(on) {
+    try {
+      if (on && !wakeLock && navigator.wakeLock && document.visibilityState === 'visible') navigator.wakeLock.request('screen').then(function (w) { wakeLock = w; w.addEventListener('release', function () { wakeLock = null; }); }, function () {});
+      if (!on && wakeLock) { wakeLock.release(); wakeLock = null; }
+    } catch (e) {}
+  }
+  function beep() {
+    try {
+      var A = window.AudioContext || window.webkitAudioContext; if (!A) return;
+      var ac = beep.ac || (beep.ac = new A());
+      [0, 0.35, 0.7].forEach(function (d) {
+        var o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 880; o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(0.0001, ac.currentTime + d); g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d + 0.3);
+        o.start(ac.currentTime + d); o.stop(ac.currentTime + d + 0.32);
+      });
+    } catch (e) {}
+    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+  }
+  function addSession(st, en, m, task, scope, mode) {
+    if (m < 1) return false;
+    FD().s.push({ id: C.uid(), st: st, en: en, m: Math.round(m), task: task || null, scope: scope || null, mode: mode });
+    return true;
+  }
+  function focusStart(mode) {
+    var f = FD(), sel = focusSel();
+    try { var A = window.AudioContext || window.webkitAudioContext; if (A && !beep.ac) beep.ac = new A(); } catch (e) {} // iOS: el sonido se desbloquea con un toque
+    f.run = { mode: mode, st: Date.now(), pz: 0, pt: 0, dur: mode === 'break' ? f.brk : mode === 'pomo' ? f.pomo : 0, task: sel.task, scope: scopeOfSel(sel) };
+    ui.fdone = null; save(); planAvisos(true); wake(true); render();
+  }
+  function focusPause() { var r = FD().run; if (!r || r.pz) return; r.pz = Date.now(); save(); planAvisos(true); render(); }
+  function focusResume() { var r = FD().run; if (!r || !r.pz) return; r.pt += Date.now() - r.pz; r.pz = 0; save(); planAvisos(true); wake(true); render(); }
+  // Terminar a mano: se guarda lo enfocado (si es al menos 1 minuto)
+  function focusStop(discard) {
+    var f = FD(), r = f.run; if (!r) return;
+    var el = runElapsed(r), msg = '';
+    if (r.mode !== 'break' && !discard) {
+      if (addSession(r.st, r.st + r.pt + el, el / 60000, r.task, r.scope, r.mode)) msg = 'Guardado: ' + fmtDur(el / 60000) + ' de enfoque.';
+      else msg = 'Menos de 1 minuto: no se ha guardado.';
+    }
+    ui.fsel = { task: r.task, scope: r.task ? null : r.scope };
+    f.run = null; ui.fdone = msg ? { kind: 'msg', msg: msg } : null;
+    save(); planAvisos(true); wake(false); render();
+  }
+  // Comprueba si el pomodoro o el descanso ya terminó (también al volver a la app después de un rato)
+  function focusCheck(live) {
+    var f = FD(), r = f.run;
+    if (!r || r.pz || r.mode === 'crono') return false;
+    var total = r.dur * 60000;
+    if (runElapsed(r) < total) return false;
+    if (r.mode === 'pomo') { addSession(r.st, r.st + r.pt + total, r.dur, r.task, r.scope, 'pomo'); ui.fdone = { kind: 'pomo', min: r.dur }; }
+    else ui.fdone = { kind: 'break' };
+    ui.fsel = { task: r.task, scope: r.task ? null : r.scope };
+    f.run = null; save(); planAvisos(true); wake(false);
+    if (live) beep();
+    return true;
+  }
+  // Barra pequeña con el temporizador cuando estás en otra pantalla
+  function drawFbar() {
+    var r = D.focus && D.focus.run, el = $('fbar');
+    document.body.classList.toggle('hasfbar', !!(r && ui.view !== 'enfoque'));
+    if (!r || ui.view === 'enfoque') { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('button'); el.id = 'fbar'; el.dataset.a = 'nav'; el.dataset.view = 'enfoque'; document.body.appendChild(el); }
+    var sl = selLabel(r), left = r.mode === 'crono' ? runElapsed(r) : r.dur * 60000 - runElapsed(r);
+    el.className = r.pz ? 'paused' : '';
+    el.innerHTML = '<span class="fdot' + (r.mode === 'break' ? ' brk' : '') + '"></span><b data-ft>' + clock(left) + '</b><span class="fl">' + esc(r.mode === 'break' ? 'Descanso' : sl.t) + '</span><span class="chev">›</span>';
+  }
+  setInterval(function () {
+    if (document.visibilityState !== 'visible' || !D.focus || !D.focus.run) return;
+    if (focusCheck(true)) { render(); return; }
+    var r = D.focus.run, left = r.mode === 'crono' ? runElapsed(r) : r.dur * 60000 - runElapsed(r);
+    [].forEach.call(document.querySelectorAll('[data-ft]'), function (e) { e.textContent = clock(left); });
+    var ring = $('fring');
+    if (ring) ring.style.strokeDashoffset = ringOff(r);
+  }, 1000);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (focusCheck(false)) render();
+    if (D.focus && D.focus.run && !D.focus.run.pz && ui.view === 'enfoque') wake(true);
+  });
+  var RING = 2 * Math.PI * 108;
+  function ringOff(r) {
+    if (!r) return 0;
+    var p = r.mode === 'crono' ? (runElapsed(r) % 3600000) / 3600000 : Math.min(1, runElapsed(r) / (r.dur * 60000));
+    return (RING * (1 - p)).toFixed(1);
+  }
+
+  function weekMins(mon) {
+    var out = [0, 0, 0, 0, 0, 0, 0], end = C.addDays(mon, 7);
+    FD().s.forEach(function (x) { var d = sessDay(x); if (d >= mon && d < end) out[C.diffDays(mon, d)] += x.m; });
+    return out;
+  }
+  function sumBetween(a, b) { var n = 0; FD().s.forEach(function (x) { var d = sessDay(x); if (d >= a && d <= b) n += x.m; }); return n; }
+
+  function viewFocus() {
+    var f = FD(), r = f.run, td = C.today();
+    focusCheck(false);
+    r = f.run;
+    var hoyM = sumBetween(td, td);
+    setTop('Enfoque', hoyM ? 'Hoy llevas ' + fmtDur(hoyM) : 'Cronómetro y pomodoro');
+    var mode = r ? (r.mode === 'break' ? 'pomo' : r.mode) : (ui.fmode || 'pomo');
+    var sel = focusSel(), sl = selLabel(sel);
+    var h = '<div class="card fcard">';
+    // aviso de fin
+    if (!r && ui.fdone) {
+      var fd = ui.fdone;
+      if (fd.kind === 'pomo') h += '<div class="fdone"><b>¡Pomodoro terminado!</b><span>' + fmtDur(fd.min) + ' guardados' + (sel.task ? ' en «' + esc(sl.t) + '»' : '') + '.</span>' +
+        '<div class="row"><button class="btn primary" data-a="fstart" data-v="break">Descansar ' + f.brk + ' min</button><button class="btn" data-a="fstart" data-v="pomo">Otro pomodoro</button></div></div>';
+      else if (fd.kind === 'break') h += '<div class="fdone"><b>Fin del descanso</b><span>¿Seguimos?</span><div class="row"><button class="btn primary" data-a="fstart" data-v="pomo">Empezar pomodoro</button><button class="btn" data-a="fdoneok">Ahora no</button></div></div>';
+      else h += '<div class="fdone small"><span>' + esc(fd.msg) + '</span><button class="ibtn x" data-a="fdoneok" aria-label="Cerrar">✕</button></div>';
+    }
+    h += '<div class="seg fseg"><button class="' + (mode === 'pomo' ? 'on' : '') + '" data-a="fmode" data-v="pomo"' + (r ? ' disabled' : '') + '>Pomodoro</button>' +
+      '<button class="' + (mode === 'crono' ? 'on' : '') + '" data-a="fmode" data-v="crono"' + (r ? ' disabled' : '') + '>Cronómetro</button></div>';
+    // tarea elegida
+    h += '<button class="fsel" data-a="fpick"><i class="sw" style="background:' + (sl.c || 'var(--muted)') + '"></i><span>' + esc(sl.t) + '</span><span class="ch">Cambiar ▾</span></button>';
+    // anillo y tiempo
+    var big = r ? (r.mode === 'crono' ? runElapsed(r) : r.dur * 60000 - runElapsed(r)) : (mode === 'pomo' ? f.pomo * 60000 : 0);
+    var col = r && r.mode === 'break' ? '#34c759' : 'var(--accent)';
+    h += '<div class="fring"><svg viewBox="0 0 240 240"><circle cx="120" cy="120" r="108" class="rbg"/>' +
+      '<circle id="fring" cx="120" cy="120" r="108" class="rfg" style="stroke:' + col + ';stroke-dasharray:' + RING.toFixed(1) + ';stroke-dashoffset:' + (r ? ringOff(r) : RING.toFixed(1)) + '"/></svg>' +
+      '<div class="fin"><b data-ft>' + clock(big) + '</b><span>' + (r ? (r.pz ? 'En pausa' : r.mode === 'break' ? 'Descanso' : r.mode === 'pomo' ? 'Enfocado' : 'Cronómetro') : mode === 'pomo' ? 'Pomodoro' : 'Listo para empezar') + '</span></div></div>';
+    if (!r && mode === 'pomo') {
+      h += '<div class="chips fdur">' + [15, 25, 30, 45, 50, 60, 90].map(function (m) { return '<button class="chip ' + (f.pomo === m ? 'on' : '') + '" data-a="fpomo" data-v="' + m + '">' + m + ' min</button>'; }).join('') + '</div>' +
+        '<div class="fbrk">Descanso: ' + [5, 10, 15].map(function (m) { return '<button class="' + (f.brk === m ? 'on' : '') + '" data-a="fbrk" data-v="' + m + '">' + m + ' min</button>'; }).join('') + '</div>';
+    }
+    if (!r) h += '<button class="btn primary block fgo" data-a="fstart" data-v="' + mode + '">▶ Empezar</button>';
+    else h += '<div class="row fctl">' + (r.pz ? '<button class="btn primary" data-a="fresume">▶ Seguir</button>' : '<button class="btn" data-a="fpause">❚❚ Pausa</button>') +
+      '<button class="btn ' + (r.mode === 'break' ? '' : 'primary') + '" data-a="fstop">' + (r.mode === 'break' ? 'Saltar descanso' : '■ Terminar y guardar') + '</button></div>' +
+      (r.mode !== 'break' ? '<button class="fdisc" data-a="fdiscard">Descartar este tiempo</button>' : '');
+    h += '</div>';
+    return h + focusStats();
+  }
+
+  function focusStats() {
+    var f = FD(), td = C.today(), mon = C.addDays(C.mondayOf(td), 7 * (ui.fWeek || 0)), day = ui.fDay || td;
+    var hoy = sumBetween(td, td), sem = sumBetween(C.mondayOf(td), C.addDays(C.mondayOf(td), 6)), mes = sumBetween(td.slice(0, 7) + '-01', td.slice(0, 7) + '-31');
+    var h = '<div class="sec">Tu registro</div><div class="ftiles">' +
+      '<div><small>Hoy</small><b>' + fmtDur(hoy) + '</b></div><div><small>Esta semana</small><b>' + fmtDur(sem) + '</b></div><div><small>Este mes</small><b>' + fmtDur(mes) + '</b></div></div>';
+    // barras de la semana
+    var wm = weekMins(mon), max = Math.max.apply(null, wm.concat([60])), tot = wm.reduce(function (a, b) { return a + b; }, 0);
+    var md = C.parse(mon), sd = C.parse(C.addDays(mon, 6));
+    h += '<div class="card"><div class="calhead" style="margin:0 0 4px"><button class="ar" data-a="fweek" data-n="-1" aria-label="Semana anterior">‹</button><span class="name" style="font-size:15px;text-transform:none">' +
+      (ui.fWeek ? md.getDate() + ' ' + MESES[md.getMonth()].slice(0, 3) + ' – ' + sd.getDate() + ' ' + MESES[sd.getMonth()].slice(0, 3) : 'Esta semana') + ' · ' + fmtDur(tot) + '</span>' +
+      '<button class="ar" data-a="fweek" data-n="1" aria-label="Semana siguiente"' + ((ui.fWeek || 0) >= 0 ? ' disabled style="opacity:.3"' : '') + '>›</button></div><div class="fbars">';
+    wm.forEach(function (m, i) {
+      var d = C.addDays(mon, i);
+      h += '<button class="fb' + (d === day ? ' sel' : '') + (d === td ? ' today' : '') + '" data-a="fday" data-date="' + d + '"><span class="fv">' + (m ? fmtShort(m) : '') + '</span>' +
+        '<span class="fcol"><i style="height:' + (m ? Math.max(4, Math.round(100 * m / max)) : 0) + '%"></i></span><span class="fd">' + DL[i] + '</span></button>';
+    });
+    h += '</div><div class="note" style="text-align:center;margin:6px 0 2px">Toca un día para ver sus sesiones.</div></div>';
+    // en qué se ha ido el tiempo
+    var per = ui.fPer || 'semana', by = ui.fBy || 'tarea', a, b;
+    if (per === 'semana') { a = mon; b = C.addDays(mon, 6); } else if (per === 'mes') { a = day.slice(0, 7) + '-01'; b = day.slice(0, 7) + '-31'; } else { a = '0000'; b = '9999'; }
+    var groups = {}, all = 0;
+    f.s.forEach(function (x) {
+      var d = sessDay(x); if (d < a || d > b) return;
+      var t = x.task && findTask(x.task), k, name, c;
+      if (by === 'tarea') { k = t ? 't' + t.id : 'n' + (x.scope || ''); name = t ? t.title : 'Sin tarea' + (x.scope ? ' · ' + C.scopeById(x.scope).name : ''); c = t ? C.scopeById(t.scope).color : x.scope ? C.scopeById(x.scope).color : '#8d8d96'; }
+      else { var sc = t ? t.scope : x.scope; k = sc || 'none'; name = sc ? C.scopeById(sc).name : 'Sin ámbito'; c = sc ? C.scopeById(sc).color : '#8d8d96'; }
+      if (!groups[k]) groups[k] = { name: name, c: c, m: 0, n: 0 };
+      groups[k].m += x.m; groups[k].n++; all += x.m;
+    });
+    var gl = Object.keys(groups).map(function (k) { return groups[k]; }).sort(function (p, q) { return q.m - p.m; });
+    h += '<div class="sec">¿En qué lo has dedicado?</div><div class="card"><div class="seg sm"><button class="' + (per === 'semana' ? 'on' : '') + '" data-a="fper" data-v="semana">' + (ui.fWeek ? 'Esa semana' : 'Esta semana') + '</button>' +
+      '<button class="' + (per === 'mes' ? 'on' : '') + '" data-a="fper" data-v="mes">' + MESES[+day.slice(5, 7) - 1].charAt(0).toUpperCase() + MESES[+day.slice(5, 7) - 1].slice(1) + '</button>' +
+      '<button class="' + (per === 'todo' ? 'on' : '') + '" data-a="fper" data-v="todo">Siempre</button></div>' +
+      '<div class="seg sm"><button class="' + (by === 'tarea' ? 'on' : '') + '" data-a="fby" data-v="tarea">Por tarea</button><button class="' + (by === 'ambito' ? 'on' : '') + '" data-a="fby" data-v="ambito">Por ámbito</button></div>';
+    if (!gl.length) h += '<div class="note" style="text-align:center;margin:10px 0">Aún no hay tiempo de enfoque en este periodo.</div>';
+    gl.forEach(function (g) {
+      var p = Math.round(100 * g.m / all);
+      h += '<div class="frow" style="--c:' + g.c + '"><div class="ft"><i></i><span>' + esc(g.name) + '</span><b>' + fmtDur(g.m) + '</b></div>' +
+        '<div class="fl2"><span class="qbar"><b style="width:' + Math.max(p, 2) + '%"></b></span><small>' + p + ' % · ' + (g.n === 1 ? '1 sesión' : g.n + ' sesiones') + '</small></div></div>';
+    });
+    h += '</div>';
+    // sesiones del día elegido
+    var ses = f.s.filter(function (x) { return sessDay(x) === day; }).sort(function (p, q) { return p.st - q.st; });
+    h += '<div class="sec">Sesiones · ' + (day === td ? 'hoy' : longDate(day)) + '</div><div class="card fses">';
+    if (!ses.length) h += '<div class="note" style="margin:6px 0">Ninguna sesión este día.</div>';
+    ses.forEach(function (x) {
+      var t = x.task && findTask(x.task), s0 = new Date(x.st), s1 = new Date(x.en), c = t ? C.scopeById(t.scope).color : x.scope ? C.scopeById(x.scope).color : '#8d8d96';
+      h += '<div class="fsr" style="--c:' + c + '"><i></i><div class="fst"><b>' + esc(t ? t.title : 'Sin tarea' + (x.scope ? ' · ' + C.scopeById(x.scope).name : '')) + '</b><small>' +
+        hm(s0.getHours() * 60 + s0.getMinutes()) + '–' + hm(s1.getHours() * 60 + s1.getMinutes()) + (x.mode === 'manual' ? ' · añadida a mano' : x.mode === 'pomo' ? ' · pomodoro' : ' · cronómetro') + '</small></div>' +
+        '<span class="fm">' + fmtDur(x.m) + '</span><button class="ibtn x" data-a="fdel" data-id="' + esc(x.id) + '" aria-label="Borrar sesión">✕</button></div>';
+    });
+    h += '<button class="btn block" data-a="fadd" style="margin:10px 0 2px">＋ Añadir tiempo a mano</button></div>';
+    return h;
+  }
+
+  // Elegir la tarea (o solo un ámbito) para el enfoque
+  function openFocusPick() {
+    var td = C.today(), q = (ui.fq || '').toLowerCase(), sel = focusSel();
+    var seen = {}, rows = [];
+    function add(t, why) { if (seen[t.id] || t.deleted) return; seen[t.id] = 1; if (q && t.title.toLowerCase().indexOf(q) < 0) return; rows.push({ t: t, why: why }); }
+    C.tasksOn(D, td).forEach(function (x) { if (!C.getState(x.t, x.d)) add(x.t, 'Hoy'); });
+    for (var i = 1; i <= 7; i++) C.tasksOn(D, C.addDays(td, i)).forEach(function (x) { if (!C.getState(x.t, x.d)) add(x.t, 'Próximos días'); });
+    D.tasks.forEach(function (t) { if (!t.date && !C.getState(t)) add(t, 'Sin fecha'); });
+    if (q) D.tasks.forEach(function (t) { add(t, 'Otras'); });
+    var h = '<h2>¿En qué te vas a enfocar?</h2><input id="fp-q" placeholder="Buscar tarea…" value="' + esc(ui.fq || '') + '" autocomplete="off">' +
+      '<div class="lbl" style="margin-top:12px">Sin tarea (opcional: elige un ámbito)</div><div class="chips">' +
+      '<button class="chip ' + (!sel.task && !sel.scope ? 'on' : '') + '" data-a="fpset" data-v="">Nada</button>' +
+      C.SCOPES.map(function (s) { return '<button class="chip ' + (!sel.task && sel.scope === s.id ? 'on' : '') + '" data-a="fpset" data-v="s:' + s.id + '"><i class="sw" style="background:' + s.color + '"></i> ' + s.name + '</button>'; }).join('') + '</div>';
+    var last = '';
+    rows.slice(0, 80).forEach(function (o) {
+      if (o.why !== last) { h += '<div class="lbl" style="margin-top:12px">' + o.why + '</div>'; last = o.why; }
+      var sc = C.scopeById(o.t.scope);
+      h += '<button class="fpick' + (sel.task === o.t.id ? ' on' : '') + '" data-a="fpset" data-v="t:' + esc(o.t.id) + '"><i class="sw" style="background:' + sc.color + '"></i><span>' + esc(o.t.title) + '</span><small>' + sc.name + '</small></button>';
+    });
+    if (!rows.length) h += '<div class="note" style="margin-top:12px">No hay tareas' + (q ? ' con ese nombre' : ' pendientes') + '.</div>';
+    h += '<div class="actions"><button class="btn" data-a="close">Cerrar</button></div>';
+    openSheet(h, 'tall');
+  }
+  function setFocusSel(v) {
+    var f = FD(), sel = !v ? { task: null, scope: null } : v.slice(0, 2) === 't:' ? { task: v.slice(2), scope: null } : { task: null, scope: v.slice(2) };
+    ui.fsel = sel;
+    if (f.run) { f.run.task = sel.task; f.run.scope = scopeOfSel(sel); save(); planAvisos(true); }
+    closeSheet(); ui.fq = ''; render();
+  }
+  function focusOfTask(id) { var n = 0; (D.focus && D.focus.s || []).forEach(function (x) { if (x.task === id) n += x.m; }); return n; }
+
+  // Añadir tiempo a mano (por ejemplo, si estudiaste sin poner el cronómetro)
+  function openFocusAdd() {
+    var day = ui.fDay || C.today(), sel = focusSel();
+    var opts = '<option value="">Sin tarea</option>', seen = {};
+    function opt(t) { if (seen[t.id] || t.deleted) return; seen[t.id] = 1; opts += '<option value="t:' + esc(t.id) + '"' + (sel.task === t.id ? ' selected' : '') + '>' + esc(t.title) + '</option>'; }
+    if (sel.task && findTask(sel.task)) opt(findTask(sel.task));
+    C.tasksOn(D, day).forEach(function (x) { opt(x.t); });
+    FD().s.slice(-40).reverse().forEach(function (x) { var t = x.task && findTask(x.task); if (t) opt(t); });
+    D.tasks.forEach(function (t) { if (!C.getState(t) && !t.rec) opt(t); });
+    openSheet('<h2>Añadir tiempo a mano</h2>' +
+      '<div class="row"><div style="flex:1"><div class="lbl">Día</div><input type="date" id="fa-d" value="' + day + '"></div><div style="flex:1"><div class="lbl">Empezó a las</div><input type="time" id="fa-t" value="' + (new Date().getHours() < 1 ? '00:00' : C.pad(new Date().getHours() - 1) + ':00') + '"></div></div>' +
+      '<div class="lbl" style="margin-top:10px">Duración (minutos)</div><input type="number" id="fa-m" min="1" max="720" value="30" inputmode="numeric">' +
+      '<div class="lbl" style="margin-top:10px">Tarea</div><select id="fa-task">' + opts + '</select>' +
+      '<div class="lbl" style="margin-top:10px">Ámbito (si no eliges tarea)</div><select id="fa-sc"><option value="">Ninguno</option>' + C.SCOPES.map(function (s) { return '<option value="' + s.id + '"' + (!sel.task && sel.scope === s.id ? ' selected' : '') + '>' + s.name + '</option>'; }).join('') + '</select>' +
+      '<div class="note" id="fa-msg" style="color:#ff6b6b"></div>' +
+      '<div class="actions"><button class="btn primary" data-a="faddgo">Añadir</button><button class="btn" data-a="close">Cancelar</button></div>');
+  }
+  function saveFocusAdd() {
+    var d = $('fa-d').value, tm = $('fa-t').value || '00:00', m = parseInt($('fa-m').value, 10), tv = $('fa-task').value;
+    if (!d) { $('fa-msg').textContent = 'Elige el día.'; return; }
+    if (!(m >= 1 && m <= 720)) { $('fa-msg').textContent = 'La duración debe ser de 1 a 720 minutos.'; return; }
+    var st = C.parse(d), p = tm.split(':'); st.setHours(+p[0], +p[1], 0, 0);
+    var task = tv ? tv.slice(2) : null, t = task && findTask(task), scope = t ? t.scope : ($('fa-sc').value || null);
+    addSession(st.getTime(), st.getTime() + m * 60000, m, task, scope, 'manual');
+    ui.fDay = d; save(); closeSheet(); render();
+  }
+
+  var VIEWS = { enfoque: viewFocus, hoy: viewHoy, buzon: viewBuzon, proximos: viewProximos, todo: viewTodo, ambito: viewAmbito,
     calendario: viewCal, objetivos: viewObj, papelera: viewPapelera, mas: viewMas };
   var NAVMAP = {};
 
@@ -758,7 +1086,9 @@
     $('main').innerHTML = VIEWS[ui.view]();
     var on = NAVMAP[ui.view] || ui.view;
     [].forEach.call(document.querySelectorAll('#nav button'), function (b) { b.classList.toggle('on', b.dataset.view === on); });
-    $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera');
+    $('fab').classList.toggle('hidden', ui.view === 'mas' || ui.view === 'papelera' || ui.view === 'enfoque');
+    drawFbar();
+    if (ui.view !== 'enfoque' || !(D.focus && D.focus.run) || D.focus.run.pz) wake(false); else wake(true);
     ensureG();
     planAvisos();
     var tl = $('tl');
@@ -900,6 +1230,8 @@
     var parts = [form.date ? dayWord(form.date) : 'Sin fecha'];
     var rl = recLabel(formRec());
     if (rl) parts.push('↻ ' + rl);
+    var nr = remsOf(form.rem, !!form.time).length;
+    if (nr && (form.date || form.recType)) parts.push('🔔' + (nr > 1 ? ' ' + nr : ''));
     var b = $('tk-datebtn');
     b.innerHTML = IC.cal + '<span>' + esc(parts.join(' · ')) + '</span><span class="ch">' + (form.dateOpen ? '▴' : '▾') + '</span>';
     b.classList.toggle('late', !!(form.date && form.date < C.today() && !form.recType));
@@ -963,6 +1295,16 @@
           .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === form.recType ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
         '</select><div id="f-rec-extra"></div></div>';
     }
+    var timed = !!form.time, cur = remsOf(form.rem, timed);
+    h += '<button class="acr" data-a="tkrem"><span>Avisos</span><span class="v">' + esc(remLabel(form.rem, timed)) + ' ' + (form.remOpen ? '▴' : '▾') + '</span></button>';
+    if (form.remOpen) {
+      h += '<div class="chips rems">' + (timed ? REM_T : REM_D).map(function (o) {
+        return '<button class="chip ' + (cur.indexOf(o[0]) >= 0 ? 'on' : '') + '" data-a="frem" data-v="' + o[0] + '">' + o[1] + '</button>';
+      }).join('') + '</div><div class="note" style="margin:6px 2px 8px">' +
+        (!form.date && !form.recType ? 'Pon una fecha para que pueda avisarte. ' : '') +
+        (timed ? 'Se cuentan desde la hora de inicio.' : 'Sin hora, el aviso llega a las ' + remHour() + ' de ese día.') +
+        (D.meta.avisosOn ? '' : ' Los avisos están apagados en este dispositivo: actívalos en Ajustes.') + '</div>';
+    }
     el.innerHTML = h; el.classList.remove('hidden');
     drawRecExtra();
   }
@@ -980,12 +1322,14 @@
       recType: t && t.rec ? t.rec.type : '',
       days: t && t.rec && t.rec.days ? t.rec.days.slice() : [],
       n: t && t.rec && t.rec.n ? t.rec.n : 2, unit: t && t.rec && t.rec.unit ? t.rec.unit : 'd',
-      menu: null, dateOpen: false, timeOpen: false, recOpen: false, calMonth: null
+      rem: t && t.rem ? t.rem.slice() : null,
+      menu: null, dateOpen: false, timeOpen: false, recOpen: false, remOpen: false, calMonth: null
     };
     if (form.time && !form.date) form.date = C.today();
     var h = '<div id="tk-main"><div class="tk-top"><button class="pill" id="tp-scope" data-a="tkmenu" data-v="scope"></button>' +
       '<button class="pill" id="tp-sub" data-a="tkmenu" data-v="sub"></button><button class="pill" id="tp-prio" data-a="tkmenu" data-v="prio"></button>' +
-      (t ? '<button class="pill sq" data-a="tkmenu" data-v="more" aria-label="Más opciones">⋯</button>' : '') + '</div>' +
+      (t ? '<button class="pill fpl" data-a="tkfocus" aria-label="Enfocarme en esta tarea">▶' + (focusOfTask(t.id) ? ' ' + fmtShort(focusOfTask(t.id)) : '') + '</button>' +
+        '<button class="pill sq" data-a="tkmenu" data-v="more" aria-label="Más opciones">⋯</button>' : '') + '</div>' +
       '<div class="tk-menu hidden" id="tk-menu"></div>' +
       '<div class="tk-daterow"><button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-timebox" id="tk-timebox"></div></div><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
       '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
@@ -1053,6 +1397,7 @@
     if (!t) { t = { id: C.uid(), created: Date.now() }; D.tasks.push(t); }
     var wasRec = !!t.rec;
     t.title = title; t.scope = form.scope; t.sub = (subById(form.sub) && subById(form.sub).scope === form.scope) ? form.sub : null; t.priority = form.priority; t.date = date; t.time = time; t.end = end; t.rec = rec;
+    if (form.rem) t.rem = remsOf(form.rem, !!time); else delete t.rem;
     if (form.notes && form.notes.trim()) t.notes = form.notes; else delete t.notes;
     // Al cambiar entre repetitiva y única, los estados anteriores ya no valen.
     if (wasRec !== !!rec) { t.states = {}; t.state = null; t.ex = []; }
@@ -1228,6 +1573,31 @@
     if (pressT && press && Math.abs(p.y - press.y) + Math.abs(p.x - press.x) > 10) { clearTimeout(pressT); pressT = null; }
   }
   function pressEnd() { if (pressT) { clearTimeout(pressT); pressT = null; } if (drag) endDrag(); }
+  // Deslizar el calendario con el dedo: a la izquierda, semana/mes siguiente; a la derecha, anterior
+  var sw = null;
+  document.addEventListener('touchstart', function (e) {
+    var box = e.target.closest && e.target.closest('.calswipe');
+    sw = box && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, grid: box.querySelector('.calgrid'), on: false } : null;
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    if (!sw) return;
+    var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (!sw.on) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; } // es desplazamiento vertical
+      if (Math.abs(dx) > 12) sw.on = true; else return;
+    }
+    e.preventDefault();
+    sw.dx = dx; sw.grid.style.transition = 'none';
+    sw.grid.style.transform = 'translateX(' + dx * 0.6 + 'px)'; sw.grid.style.opacity = 1 - Math.min(Math.abs(dx) / 500, 0.4);
+  }, { passive: false });
+  document.addEventListener('touchend', function () {
+    if (!sw) return;
+    var s0 = sw; sw = null;
+    if (!s0.on) return;
+    noClickUntil = Date.now() + 400;
+    if (Math.abs(s0.dx || 0) > 50) { calMove(s0.dx < 0 ? 1 : -1); return; }
+    s0.grid.style.transition = 'transform .15s, opacity .15s'; s0.grid.style.transform = ''; s0.grid.style.opacity = '';
+  });
   document.addEventListener('touchstart', pressStart, { passive: true });
   document.addEventListener('touchmove', pressMove, { passive: false });
   document.addEventListener('touchend', pressEnd);
@@ -1237,7 +1607,7 @@
   document.addEventListener('mouseup', pressEnd);
 
   document.addEventListener('click', function (e) {
-    if (Date.now() < noClickUntil && e.target.closest('.task, .ev')) return;
+    if (Date.now() < noClickUntil && e.target.closest('.task, .ev, .calswipe')) return;
     var cli = e.target.closest && e.target.closest('#tk-notesbtn ul.cl > li');
     if (cli && form && e.clientX - cli.getBoundingClientRect().left <= 34) { togglePreviewCheck(cli); return; }
     var el = e.target.closest('[data-a]');
@@ -1247,6 +1617,33 @@
       case 'nav': closeSheet(); go(el.dataset.view); break;
       case 'fab': ui.view === 'objetivos' ? openGoal() : ui.view === 'buzon' && ui.inbTab === 'obj' ? openIdea() : openTask(); break;
       case 'menu': openDrawer(); break;
+      case 'tkfocus':
+        var fid = form.id; saveTask();
+        if (!form) { ui.fsel = { task: fid, scope: null }; if (D.focus && D.focus.run) { D.focus.run.task = fid; D.focus.run.scope = findTask(fid).scope; save(); } ui.fdone = null; go('enfoque'); }
+        break;
+      case 'fmode': ui.fmode = v; render(); break;
+      case 'fpick': ui.fq = ''; openFocusPick(); break;
+      case 'fpset': setFocusSel(v); break;
+      case 'fstart': focusStart(v); break;
+      case 'fpause': focusPause(); break;
+      case 'fresume': focusResume(); break;
+      case 'fstop': focusStop(false); break;
+      case 'fdiscard': if (confirm('¿Descartar este tiempo? No se guardará.')) focusStop(true); break;
+      case 'fdoneok': ui.fdone = null; render(); break;
+      case 'fpomo': FD().pomo = +v; save(); render(); break;
+      case 'fbrk': FD().brk = +v; save(); render(); break;
+      case 'fweek':
+        var nw = Math.min(0, (ui.fWeek || 0) + (+el.dataset.n));
+        if (nw !== (ui.fWeek || 0)) { ui.fWeek = nw; var fd0 = C.addDays(ui.fDay || C.today(), 7 * (+el.dataset.n)); ui.fDay = fd0 > C.today() ? C.today() : fd0; }
+        render(); break;
+      case 'fday': ui.fDay = d; render(); break;
+      case 'fper': ui.fPer = v; render(); break;
+      case 'fby': ui.fBy = v; render(); break;
+      case 'fdel':
+        if (confirm('¿Borrar esta sesión de enfoque?')) { FD().s = FD().s.filter(function (x) { return x.id !== id; }); save(); render(); }
+        break;
+      case 'fadd': openFocusAdd(); break;
+      case 'faddgo': saveFocusAdd(); break;
       case 'dclose': closeDrawer(); break;
       case 'dnav':
         closeDrawer(); closeSheet();
@@ -1275,16 +1672,9 @@
       case 'slot': openTask(null, null, { time: C.pad(+el.dataset.h) + ':00' }); break;
       case 'caltoggle': ui.calOpen = !ui.calOpen; ui.calMonth = ui.calSel.slice(0, 7); render(); break;
       case 'calsel':
-        ui.calSel = d; ui.calMonth = d.slice(0, 7); ui.tlScroll = true; render(); break;
+        ui.calSel = d; ui.calMonth = d.slice(0, 7); render(); break;
       case 'calmove':
-        var n = +el.dataset.n;
-        if (ui.calOpen) {
-          var p = ui.calMonth.split('-'), m = new Date(+p[0], +p[1] - 1 + n, 1);
-          ui.calMonth = C.fmt(m).slice(0, 7);
-          var day = Math.min(C.parse(ui.calSel).getDate(), C.dim(m.getFullYear(), m.getMonth() + 1));
-          ui.calSel = ui.calMonth + '-' + C.pad(day);
-        } else { ui.calSel = C.addDays(ui.calSel, 7 * n); ui.calMonth = ui.calSel.slice(0, 7); }
-        ui.tlScroll = true; render(); break;
+        calMove(+el.dataset.n); break;
       case 'qmove': ui.quarter = C.shiftQuarter(ui.quarter, +el.dataset.n); render(); break;
       case 'goalcycle':
         var g = D.goals.filter(function (x) { return x.id === id; })[0];
@@ -1333,6 +1723,11 @@
       case 'fprio': form.priority = +v; form.menu = null; drawMenu(); refreshTop(); break;
       case 'tkdate': form.dateOpen = !form.dateOpen; form.menu = null; drawMenu(); drawDatePanel(); refreshTop(); break;
       case 'tkrec': form.recOpen = !form.recOpen; drawDatePanel(); break;
+      case 'tkrem': form.remOpen = !form.remOpen; drawDatePanel(); break;
+      case 'frem':
+        var cur = remsOf(form.rem, !!form.time), mm = +v, ix = cur.indexOf(mm);
+        if (ix >= 0) cur.splice(ix, 1); else cur.push(mm);
+        form.rem = cur; drawDatePanel(); refreshTop(); break;
       case 'fdate':
         if (v === 'none') { form.date = null; form.time = null; form.end = null; form.recType = ''; }
         else form.date = v === 'today' ? C.today() : v === 'tomorrow' ? C.addDays(C.today(), 1) : nextMonday(C.today());
@@ -1341,7 +1736,7 @@
       case 'fcalmove':
         var cm = (form.calMonth || (form.date || C.today()).slice(0, 7)).split('-'), cd = new Date(+cm[0], +cm[1] - 1 + (+el.dataset.n), 1);
         form.calMonth = C.fmt(cd).slice(0, 7); drawDatePanel(); break;
-      case 'ftimeclear': form.time = null; form.end = null; refreshTop(); break;
+      case 'ftimeclear': form.time = null; form.end = null; refreshTop(); if (form.dateOpen) drawDatePanel(); break;
       case 'mvopen': mvs = { id: form.id, from: form.ctx }; closeSheet(); openMove(); break;
       case 'mvquick': $('m-date').value = C.addDays(C.today(), +v); break;
       case 'mvgo':
@@ -1387,6 +1782,7 @@
 
   document.addEventListener('change', function (e) {
     var t = e.target, id = t.id;
+    if (id === 's-remhour') { if (t.value) { D.meta.remHour = t.value; save(); planAvisos(true); } return; }
     if (t.dataset && t.dataset.gcal) { D.meta.gColors = D.meta.gColors || {}; D.meta.gColors[t.dataset.gcal] = t.value; save(); render(); return; }
     if (!form || !id) return;
     if (id === 'f-rec') {
@@ -1398,7 +1794,7 @@
     else if (id === 'q-time' || id === 'q-end') {
       form.time = $('q-time').value || null; form.end = form.time ? ($('q-end').value || null) : null;
       if (form.time && !form.date) form.date = C.today();
-      refreshTop();
+      refreshTop(); if (form.dateOpen && form.remOpen) drawDatePanel();
     }
   });
   /* ---------- Notas de la tarea (mini editor de texto) ---------- */
@@ -1525,6 +1921,10 @@
   document.addEventListener('input', function (e) {
     if (e.target.id === 'af-q') { ambF().q = e.target.value; var r = $('amb-res'); if (r) r.innerHTML = ambResults(); return; }
     if (e.target.id === 'f-notes') notesChanged();
+    if (e.target.id === 'fp-q') {
+      var q = e.target.value.toLowerCase(); ui.fq = e.target.value;
+      [].forEach.call(document.querySelectorAll('.fpick'), function (b) { b.style.display = b.querySelector('span').textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none'; });
+    }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target.id === 'f-title' && form) { e.preventDefault(); saveTask(); }
