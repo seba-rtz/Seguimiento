@@ -482,25 +482,35 @@
     });
     gTimed.forEach(function (ev) { var m = gMins(ev, sel); evs.push({ g: ev, s: m[0], e: m[1] }); });
     evs.sort(function (a, b) { return a.s - b.s || a.e - b.e; });
-    // reparto en columnas para tareas que se solapan
-    var cluster = [], colEnds = [], clEnd = 0;
-    function flush() {
-      // orden fijo de columnas: tareas a la izquierda, luego calendarios de Google por orden y la universidad siempre a la derecha
-      var nc = colEnds.length, cr = [];
-      for (var q = 0; q < nc; q++) cr.push({ c: q, r: 99999 });
-      cluster.forEach(function (ev) {
-        var r = ev.g ? (ev.g.calName === 'Universidad' ? 1000 : ev.g.cal) : -1;
-        if (r < cr[ev.c].r) cr[ev.c].r = r;
+    // reparto en columnas para lo que se solapa: los eventos del calendario (bloques grandes) a la izquierda,
+    // por orden de calendario y la universidad la última de ellos; las tareas SIEMPRE a la derecha
+    function lanes(list) {
+      var ends = [];
+      list.forEach(function (ev) {
+        var c = 0; while (c < ends.length && ends[c] > ev.s) c++;
+        ends[c] = ev.e; ev.c = c;
       });
-      var map = {};
-      cr.slice().sort(function (p, o) { return p.r - o.r || p.c - o.c; }).forEach(function (o, i) { map[o.c] = i; });
-      cluster.forEach(function (ev) { ev.c = map[ev.c]; ev.n = nc; });
-      cluster = []; colEnds = [];
+      return ends.length;
+    }
+    var cluster = [], clEnd = 0;
+    function flush() {
+      if (!cluster.length) return;
+      var gs = cluster.filter(function (ev) { return ev.g; }), ts = cluster.filter(function (ev) { return !ev.g; });
+      var ng = lanes(gs), nt = lanes(ts);
+      if (ng) { // columnas de Google en orden fijo por calendario
+        var cr = [];
+        for (var q = 0; q < ng; q++) cr.push({ c: q, r: 99999 });
+        gs.forEach(function (ev) { var r = ev.g.calName === 'Universidad' ? 1000 : ev.g.cal; if (r < cr[ev.c].r) cr[ev.c].r = r; });
+        var map = {};
+        cr.slice().sort(function (p, o) { return p.r - o.r || p.c - o.c; }).forEach(function (o, i) { map[o.c] = i; });
+        gs.forEach(function (ev) { ev.c = map[ev.c]; });
+      }
+      ts.forEach(function (ev) { ev.c += ng; });
+      cluster.forEach(function (ev) { ev.n = ng + nt; });
+      cluster = [];
     }
     evs.forEach(function (ev) {
       if (cluster.length && ev.s >= clEnd) flush();
-      var c = 0; while (c < colEnds.length && colEnds[c] > ev.s) c++;
-      colEnds[c] = ev.e; ev.c = c;
       clEnd = cluster.length ? Math.max(clEnd, ev.e) : ev.e;
       cluster.push(ev);
     });
@@ -639,7 +649,7 @@
       mrow({ a: 'import', act: 1, i: 'up', c: '#4a9bff', t: 'Importar copia', sub: 'Sustituye los datos actuales' }) + '</div>' +
       '<div class="mnote">Tus datos se guardan en este dispositivo y, si has iniciado sesión, también en la nube. Aun así, haz copias de vez en cuando y guárdalas en Archivos o iCloud.</div>';
     if (email) h += '<div class="card set" style="margin-top:16px">' + mrow({ a: 'logout', i: 'out', c: '#ff6b6b', t: 'Cerrar sesión', danger: true }) + '</div>';
-    return h + '<div class="ver">Versión 25</div>';
+    return h + '<div class="ver">Versión 26</div>';
   }
 
   /* ---------- Calendarios: nuevo, cambiar enlace, quitar y colores, todo en un sitio ---------- */
@@ -845,7 +855,8 @@
   var IC = {
     cal: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
     flag: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
-    note: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h3"/></svg>'
+    note: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h7M9 8h3"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
   };
   function dayWord(d) {
     var td = C.today();
@@ -859,6 +870,26 @@
   function timeText() { return form.time ? (form.end ? form.time + '–' + form.end : form.time) : ''; }
   function nextMonday(from) { var d = C.addDays(from, 1); while (C.weekday(C.parse(d)) !== 0) d = C.addDays(d, 1); return d; }
 
+  // Hora de inicio y fin junto a la fecha: al tocar se abre directamente el selector de hora del iPhone
+  function drawTimeBox() {
+    var el = $('tk-timebox'); if (!el) return;
+    if (!el.firstChild) {
+      el.innerHTML = '<label class="tchip" id="tc-s">' + IC.clock + '<span class="tv"></span><input type="time" id="q-time" aria-label="Hora de inicio"></label>' +
+        '<label class="tchip" id="tc-e"><span class="tv"></span><input type="time" id="q-end" aria-label="Hora de fin"></label>' +
+        '<button class="tclr" id="tc-x" data-a="ftimeclear" aria-label="Quitar hora">✕</button>';
+    }
+    var qs = $('q-time'), qe = $('q-end');
+    if (document.activeElement !== qs) qs.value = form.time || '';
+    if (document.activeElement !== qe) qe.value = form.end || '';
+    $('tc-s').querySelector('.tv').textContent = form.time || 'Hora';
+    $('tc-s').classList.toggle('dim', !form.time);
+    $('tc-e').querySelector('.tv').textContent = form.end ? '– ' + form.end : '– Fin';
+    $('tc-e').classList.toggle('dim', !form.end);
+    $('tc-e').classList.toggle('bad', !!(form.end && form.time && form.end <= form.time));
+    $('tc-e').classList.toggle('hidden', !form.time);
+    $('tc-x').classList.toggle('hidden', !form.time);
+  }
+
   function refreshTop() {
     var sc = C.scopeById(form.scope), sb = subById(form.sub);
     $('tp-scope').innerHTML = '<i class="sw" style="background:' + sc.color + '"></i>' + esc(sc.name) + '<span class="ch">▾</span>';
@@ -867,12 +898,12 @@
     $('tp-prio').innerHTML = IC.flag + (form.priority ? '<b>' + '•'.repeat(form.priority) + '</b>' : '') + '<span class="ch">▾</span>';
     $('tp-prio').classList.toggle('dim', !form.priority);
     var parts = [form.date ? dayWord(form.date) : 'Sin fecha'];
-    if (form.time) parts.push(timeText());
     var rl = recLabel(formRec());
     if (rl) parts.push('↻ ' + rl);
     var b = $('tk-datebtn');
     b.innerHTML = IC.cal + '<span>' + esc(parts.join(' · ')) + '</span><span class="ch">' + (form.dateOpen ? '▴' : '▾') + '</span>';
     b.classList.toggle('late', !!(form.date && form.date < C.today() && !form.recType));
+    drawTimeBox();
     var nb = $('tk-notesbtn'), nh = notesHtml(form.notes);
     nb.classList.toggle('has', !!nh);
     var keep = nb.querySelector('.npv'), sc0 = keep ? keep.scrollTop : 0;
@@ -925,12 +956,6 @@
     }
     h += '<div class="mini"><div class="calhead"><button class="ar" data-a="fcalmove" data-n="-1">‹</button><span class="name">' + MESES[+p[1] - 1] + ' ' + p[0] +
       '</span><button class="ar" data-a="fcalmove" data-n="1">›</button></div><div class="calgrid">' + DL.map(function (l) { return '<span class="wd">' + l + '</span>'; }).join('') + cells + '</div></div>';
-    h += '<button class="acr" data-a="tktime"><span>Hora</span><span class="v">' + esc(timeText() || 'Ninguna') + ' ' + (form.timeOpen ? '▴' : '▾') + '</span></button>';
-    if (form.timeOpen) {
-      h += '<div class="row" style="padding:2px 0 0"><div style="flex:1"><div class="note" style="margin:0 0 4px">Inicio</div><input type="time" id="f-time" value="' + esc(form.time || '') + '"></div>' +
-        '<div style="flex:1"><div class="note" style="margin:0 0 4px">Fin (opcional)</div><input type="time" id="f-end" value="' + esc(form.end || '') + '"></div></div>' +
-        '<button class="btn block" data-a="ftimeclear" style="margin:0 0 10px;padding:9px">Quitar hora</button>';
-    }
     h += '<button class="acr" data-a="tkrec"><span>Repetir</span><span class="v">' + esc(recLabel(formRec()) || 'Ninguno') + ' ' + (form.recOpen ? '▴' : '▾') + '</span></button>';
     if (form.recOpen) {
       h += '<div style="padding:2px 0 8px"><select id="f-rec">' +
@@ -962,7 +987,7 @@
       '<button class="pill" id="tp-sub" data-a="tkmenu" data-v="sub"></button><button class="pill" id="tp-prio" data-a="tkmenu" data-v="prio"></button>' +
       (t ? '<button class="pill sq" data-a="tkmenu" data-v="more" aria-label="Más opciones">⋯</button>' : '') + '</div>' +
       '<div class="tk-menu hidden" id="tk-menu"></div>' +
-      '<button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
+      '<div class="tk-daterow"><button class="tk-date" id="tk-datebtn" data-a="tkdate"></button><div class="tk-timebox" id="tk-timebox"></div></div><div class="tk-datepanel hidden" id="tk-datepanel"></div>' +
       '<input id="f-title" placeholder="¿Qué necesitas hacer?" value="' + (t ? esc(t.title) : '') + '" autocomplete="off">' +
       '<div class="tk-notesbtn" id="tk-notesbtn" data-a="tknotes" role="button" tabindex="0"></div>' +
       '<div class="row" style="margin-top:12px"><button class="btn" data-a="close" style="flex:1">Cancelar</button><button class="btn primary" data-a="savetask" style="flex:2">' + (t ? 'Guardar' : 'Añadir') + '</button></div></div>';
@@ -1013,7 +1038,7 @@
     var title = $('f-title').value.trim();
     if (!title) { $('f-title').focus(); return; }
     // Si los campos desplegables están abiertos, se toma lo que muestran.
-    if ($('f-time')) { form.time = $('f-time').value || null; form.end = $('f-end').value || null; }
+    if ($('q-time')) { form.time = $('q-time').value || null; form.end = form.time ? ($('q-end').value || null) : null; }
     if ($('f-n')) form.n = Math.max(1, parseInt($('f-n').value, 10) || 1);
     if ($('f-unit')) form.unit = $('f-unit').value;
     var date = form.date || null, time = form.time || null, end = form.end || null;
@@ -1307,7 +1332,6 @@
         form.menu = null; drawMenu(); refreshTop(); break;
       case 'fprio': form.priority = +v; form.menu = null; drawMenu(); refreshTop(); break;
       case 'tkdate': form.dateOpen = !form.dateOpen; form.menu = null; drawMenu(); drawDatePanel(); refreshTop(); break;
-      case 'tktime': form.timeOpen = !form.timeOpen; drawDatePanel(); break;
       case 'tkrec': form.recOpen = !form.recOpen; drawDatePanel(); break;
       case 'fdate':
         if (v === 'none') { form.date = null; form.time = null; form.end = null; form.recType = ''; }
@@ -1317,7 +1341,7 @@
       case 'fcalmove':
         var cm = (form.calMonth || (form.date || C.today()).slice(0, 7)).split('-'), cd = new Date(+cm[0], +cm[1] - 1 + (+el.dataset.n), 1);
         form.calMonth = C.fmt(cd).slice(0, 7); drawDatePanel(); break;
-      case 'ftimeclear': form.time = null; form.end = null; drawDatePanel(); refreshTop(); break;
+      case 'ftimeclear': form.time = null; form.end = null; refreshTop(); break;
       case 'mvopen': mvs = { id: form.id, from: form.ctx }; closeSheet(); openMove(); break;
       case 'mvquick': $('m-date').value = C.addDays(C.today(), +v); break;
       case 'mvgo':
@@ -1355,6 +1379,12 @@
     }
   });
 
+  // En el ordenador, un campo de hora invisible no abre su selector solo: se abre a mano
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if ((t.id === 'q-time' || t.id === 'q-end') && t.showPicker) { try { t.showPicker(); } catch (x) {} }
+  });
+
   document.addEventListener('change', function (e) {
     var t = e.target, id = t.id;
     if (t.dataset && t.dataset.gcal) { D.meta.gColors = D.meta.gColors || {}; D.meta.gColors[t.dataset.gcal] = t.value; save(); render(); return; }
@@ -1365,8 +1395,8 @@
       drawRecExtra(); refreshTop(); drawDatePanel();
     } else if (id === 'f-n') { form.n = Math.max(1, parseInt(e.target.value, 10) || 1); refreshTop(); }
     else if (id === 'f-unit') { form.unit = e.target.value; refreshTop(); }
-    else if (id === 'f-time' || id === 'f-end') {
-      form.time = $('f-time').value || null; form.end = $('f-end').value || null;
+    else if (id === 'q-time' || id === 'q-end') {
+      form.time = $('q-time').value || null; form.end = form.time ? ($('q-end').value || null) : null;
       if (form.time && !form.date) form.date = C.today();
       refreshTop();
     }
