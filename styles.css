@@ -40,7 +40,7 @@ input[type=date],input[type=time]{min-height:46px}
 .task{position:relative;display:flex;align-items:center;gap:8px;background:var(--card);border-radius:14px;
   margin-bottom:8px;padding:11px 12px 11px 16px;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .task .bar{position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c)}
-.dots{width:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:none}
+.dots{width:19px;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:2px;flex:none}
 .dots i{width:5px;height:5px;border-radius:50%;background:var(--muted);display:block}
 .chk{flex:none;width:26px;height:26px;border-radius:8px;border:2px solid var(--c);display:flex;align-items:center;
   justify-content:center;font-size:16px;line-height:1;color:#111}
